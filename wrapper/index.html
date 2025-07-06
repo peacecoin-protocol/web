@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WPCE - Wrapped PeaceCoin Token</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>WPCE Token Wrapper</h1>
+
+        <div class="network-selector">
+            <button class="network-btn active" data-network="mainnet-dev">Mainnet Dev</button>
+            <button class="network-btn" data-network="mainnet-beta">Mainnet Beta</button>
+        </div>
+
+        <div id="wallet-section" class="section">
+            <button id="connect-wallet">Connect Wallet</button>
+            <div id="wallet-info" style="display: none;">
+                <p>Connected: <span id="wallet-address"></span></p>
+                <div class="balance">
+                    <span>PCE Balance:</span>
+                    <span id="pce-balance">0</span>
+                    <button class="import-btn-small" id="import-pce" title="Add PCE to MetaMask">+</button>
+                </div>
+                <div class="balance">
+                    <span>WPCE Balance:</span>
+                    <span id="wpce-balance">0</span>
+                    <button class="import-btn-small" id="import-wpce" title="Add WPCE to MetaMask">+</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-section" style="display: none;">
+            <div class="tab-container">
+                <div class="tab active">Wrap PCE</div>
+                <div class="tab">Unwrap WPCE</div>
+            </div>
+
+            <div id="wrap-content" class="tab-content active">
+                <div class="info">
+                    Wrap your PCE tokens to receive WPCE tokens for DAO governance voting.
+                </div>
+                <div class="input-group">
+                    <label for="wrap-amount">Amount to Wrap</label>
+                    <input type="number" id="wrap-amount" placeholder="0.0" step="0.000001">
+                </div>
+                <button id="wrap-button">Wrap PCE to WPCE</button>
+            </div>
+
+            <div id="unwrap-content" class="tab-content">
+                <div class="info">
+                    Unwrap your WPCE tokens to receive back your PCE tokens.
+                </div>
+                <div class="input-group">
+                    <label for="unwrap-amount">Amount to Unwrap</label>
+                    <input type="number" id="unwrap-amount" placeholder="0.0" step="0.000001">
+                </div>
+                <button id="unwrap-button">Unwrap WPCE to PCE</button>
+            </div>
+        </div>
+
+        <div id="message" class="section"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
