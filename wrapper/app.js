@@ -11,8 +11,8 @@ const NETWORKS = {
     // },
     'mainnet-dev': {
         name: 'Mainnet Dev',
-        pceToken: '0xcE722488EF98c7053A877709BC3EabB53A9F3E3e',
-        wpceToken: '0xc83302dE12342ECc664a86c052035071627f6a9b',
+        pceToken: '0xF26170DE22f2593cbebE296651D039F3B4637E5C',
+        wpceToken: '0x9814638c31513F3aAE8259936489a1B50e00e68E',
         pceSymbol: 'DPCE',
         wpceSymbol: 'DWPCE'
     }
@@ -223,7 +223,7 @@ async function addTokenToMetaMask(tokenType) {
         const tokenAddress = tokenType === 'pce' ? PCE_TOKEN_ADDRESS : WPCE_TOKEN_ADDRESS;
         const tokenSymbol = tokenType === 'pce' ? NETWORKS[currentNetwork].pceSymbol : NETWORKS[currentNetwork].wpceSymbol;
         const tokenDecimals = 18; // Both tokens use 18 decimals
-        
+
         const wasAdded = await window.ethereum.request({
             method: 'wallet_watchAsset',
             params: {
