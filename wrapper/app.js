@@ -2,13 +2,13 @@ import { ethers } from "https://cdnjs.cloudflare.com/ajax/libs/ethers/6.15.0/eth
 
 // Configuration - Update these addresses after deployment
 const NETWORKS = {
-    // 'mainnet-beta': {
-    //     name: 'Mainnet Beta',
-    //     pceToken: '0x0000000000000000000000000000000000000000', // Update with actual mainnet-beta PCE address
-    //     wpceToken: '0x0000000000000000000000000000000000000000', // Update with actual mainnet-beta WPCE address
-    //     pceSymbol: 'PCE',
-    //     wpceSymbol: 'WPCE'
-    // },
+    'mainnet-prd': {
+        name: 'Mainnet Production',
+        pceToken: '0x7c28310CC0b8d898c57b93913098e74a3ba23228', // Update with actual mainnet-prd PCE address
+        wpceToken: '0x53a458616e295a674A12D01966DE55d8e386F555', // Update with actual mainnet-prd WPCE address
+        pceSymbol: 'PCE',
+        wpceSymbol: 'WPCE'
+    },
     'mainnet-dev': {
         name: 'Mainnet Dev',
         pceToken: '0xF26170DE22f2593cbebE296651D039F3B4637E5C',
@@ -18,7 +18,7 @@ const NETWORKS = {
     }
 };
 
-let currentNetwork = 'mainnet-dev';
+let currentNetwork = 'mainnet-prd';
 let PCE_TOKEN_ADDRESS = NETWORKS[currentNetwork].pceToken;
 let WPCE_TOKEN_ADDRESS = NETWORKS[currentNetwork].wpceToken;
 
