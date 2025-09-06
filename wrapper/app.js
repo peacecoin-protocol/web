@@ -5,7 +5,7 @@ const NETWORKS = {
     'mainnet-prd': {
         name: 'Mainnet Production',
         pceToken: '0x7c28310CC0b8d898c57b93913098e74a3ba23228', // Update with actual mainnet-prd PCE address
-        wpceToken: '0x53a458616e295a674A12D01966DE55d8e386F555', // Update with actual mainnet-prd WPCE address
+        wpceToken: '0xeB5e0632eD3C635E0fa07420A328b49a7D0E6e6d', // Update with actual mainnet-prd WPCE address
         pceSymbol: 'PCE',
         wpceSymbol: 'WPCE'
     },
