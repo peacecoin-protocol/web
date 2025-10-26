@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manage Community Token - PeaceCoin</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Manage Community Token</h1>
+
+        <div class="network-selector">
+            <button class="network-btn active" data-network="mainnet-prd">Mainnet Production</button>
+            <button class="network-btn" data-network="mainnet-dev">Mainnet Dev</button>
+        </div>
+
+        <div id="wallet-section" class="section">
+            <button id="connect-wallet">Connect Wallet</button>
+            <div id="wallet-info" style="display: none;">
+                <p>Connected: <span id="wallet-address"></span></p>
+                <div class="balance">
+                    <span>PCE Balance:</span>
+                    <span id="pce-balance">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="main-section" style="display: none;">
+            <div class="tab-container">
+                <div class="tab active">Register Token</div>
+                <div class="tab">Swap PCE</div>
+                <div class="tab">Token Settings</div>
+            </div>
+
+            <div id="register-content" class="tab-content active">
+                <div class="info">
+                    Register a new Community Token with PCE Token contract.
+                </div>
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">Basic Information</h3>
+                <div class="input-group">
+                    <label for="register-token-name">Token Name</label>
+                    <input type="text" id="register-token-name" placeholder="My Community Token">
+                </div>
+                <div class="input-group">
+                    <label for="register-token-symbol">Token Symbol</label>
+                    <input type="text" id="register-token-symbol" placeholder="MCT">
+                </div>
+                <div class="input-group">
+                    <label for="register-amount-to-exchange">PCE Amount to Exchange</label>
+                    <input type="number" id="register-amount-to-exchange" placeholder="1000" step="0.000001">
+                    <small>Amount of PCE tokens to deposit into the new token</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-dilution-factor">Dilution Factor</label>
+                    <input type="number" id="register-dilution-factor" placeholder="1.0" step="0.1" value="1.0">
+                    <small>Multiplier for initial token supply (0.1 - 1000)</small>
+                </div>
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">Token Economics</h3>
+                <div class="input-group">
+                    <label for="register-decrease-interval">Decrease Interval (days)</label>
+                    <input type="number" id="register-decrease-interval" value="7">
+                    <small>How often the token value decreases</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-after-decrease-bp">After Decrease BP (basis points)</label>
+                    <input type="number" id="register-after-decrease-bp" placeholder="9980" value="9980">
+                    <small>Value after decrease (9980 = 99.8%, decrease rate 0.2%)</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-max-increase-total-bp">Max Total Supply Increase BP</label>
+                    <input type="number" id="register-max-increase-total-bp" placeholder="10000" value="10000">
+                    <small>Maximum increase allowed for total supply (10000 = 100%)</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-max-increase-bp">Max Individual Increase BP</label>
+                    <input type="number" id="register-max-increase-bp" placeholder="10000" value="10000">
+                    <small>Maximum increase allowed per operation</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-max-usage-bp">Max Usage BP</label>
+                    <input type="number" id="register-max-usage-bp" placeholder="10000" value="10000">
+                    <small>Maximum usage allowed</small>
+                </div>
+                <div class="input-group">
+                    <label for="register-change-bp">Change BP</label>
+                    <input type="number" id="register-change-bp" placeholder="10000" value="10000">
+                    <small>Change basis points</small>
+                </div>
+                <h3 style="margin-top: 20px; margin-bottom: 10px;">Exchange Settings</h3>
+                <div class="input-group">
+                    <label for="register-income-method">Income Exchange Allow Method</label>
+                    <select id="register-income-method">
+                        <option value="0">None</option>
+                        <option value="1">Include</option>
+                        <option value="2">Exclude</option>
+                        <option value="3" selected>All</option>
+                    </select>
+                </div>
+                <div class="input-group">
+                    <label for="register-outgo-method">Outgo Exchange Allow Method</label>
+                    <select id="register-outgo-method">
+                        <option value="0">None</option>
+                        <option value="1">Include</option>
+                        <option value="2">Exclude</option>
+                        <option value="3" selected>All</option>
+                    </select>
+                </div>
+                <button id="register-button">Register Community Token</button>
+                <div id="register-result" style="display: none; margin-top: 20px;">
+                    <div class="success">
+                        <p><strong>Token Registered Successfully!</strong></p>
+                        <p>Token Address: <span id="registered-token-address"></span></p>
+                        <button id="add-token-to-metamask" class="secondary-button">Add to MetaMask</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="swap-content" class="tab-content">
+                <div class="info">
+                    Swap PCE tokens to Community Token at the current exchange rate.
+                </div>
+                <div class="input-group">
+                    <label for="swap-token-select">Select Community Token</label>
+                    <select id="swap-token-select">
+                        <option value="">-- Select a token --</option>
+                    </select>
+                    <button type="button" id="refresh-tokens-button" class="secondary-button small-button">Refresh</button>
+                </div>
+                <div id="swap-token-info" class="token-info" style="display: none;">
+                    <h4><span id="swap-token-name"></span> (<span id="swap-token-symbol"></span>)</h4>
+                    <div class="detail-row">
+                        <span class="label">Your Balance:</span>
+                        <span id="swap-token-balance" class="value">0</span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Exchange Rate:</span>
+                        <span class="value">1 PCE = <span id="swap-exchange-rate">0</span> <span id="swap-rate-symbol"></span></span>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="swap-amount">PCE Amount to Swap</label>
+                    <input type="number" id="swap-amount" placeholder="0.0" step="0.000001">
+                </div>
+                <div id="swap-preview" class="swap-preview" style="display: none;">
+                    <p>You will receive approximately: <strong><span id="swap-receive-amount">0</span> <span id="swap-receive-symbol"></span></strong></p>
+                </div>
+                <button id="swap-button">Swap to Community Token</button>
+            </div>
+
+            <div id="settings-content" class="tab-content">
+                <div class="info">
+                    Manage settings for your Community Token. Only the token owner can modify these settings.
+                </div>
+                <div class="input-group">
+                    <label for="settings-token-select">Select Your Community Token</label>
+                    <select id="settings-token-select">
+                        <option value="">-- Select a token --</option>
+                    </select>
+                    <button type="button" id="refresh-settings-tokens-button" class="secondary-button small-button">Refresh</button>
+                </div>
+                <div id="settings-token-info" class="token-info" style="display: none;">
+                    <h4><span id="settings-token-name"></span> (<span id="settings-token-symbol"></span>)</h4>
+                    <div class="detail-row">
+                        <span class="label">Token Address:</span>
+                        <span id="settings-token-address" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Owner:</span>
+                        <span id="settings-token-owner" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Total Supply:</span>
+                        <span id="settings-total-supply" class="value">0</span>
+                    </div>
+                </div>
+                <div id="settings-forms" style="display: none;">
+                    <h3>Update Exchange Rate</h3>
+                    <div class="input-group">
+                        <label for="settings-new-exchange-rate">New Exchange Rate (1 PCE = ? tokens)</label>
+                        <input type="number" id="settings-new-exchange-rate" placeholder="1.0" step="0.000001">
+                    </div>
+                    <button id="update-exchange-rate-button">Update Exchange Rate</button>
+
+                    <h3 style="margin-top: 30px;">Swap Limits</h3>
+                    <div class="input-group">
+                        <label for="settings-daily-limit">Daily Swap Limit (Total)</label>
+                        <input type="number" id="settings-daily-limit" placeholder="1000" step="0.000001">
+                    </div>
+                    <div class="input-group">
+                        <label for="settings-individual-limit">Daily Swap Limit (Per User)</label>
+                        <input type="number" id="settings-individual-limit" placeholder="100" step="0.000001">
+                    </div>
+                    <button id="update-swap-limits-button">Update Swap Limits</button>
+                </div>
+            </div>
+        </div>
+
+        <div id="message" class="section"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>

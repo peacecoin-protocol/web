@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCE Voucher System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <h1>PCE Voucher System</h1>
+
+        <div class="network-selector">
+            <button class="network-btn active" data-network="mainnet-prd">Mainnet Production</button>
+            <button class="network-btn" data-network="mainnet-dev">Mainnet Dev</button>
+        </div>
+
+        <div id="wallet-section" class="section">
+            <button id="connect-wallet">Connect Wallet</button>
+            <div id="wallet-info" style="display: none;">
+                <p>Connected: <span id="wallet-address"></span></p>
+                <div class="balance">
+                    <span>PCE Balance:</span>
+                    <span id="pce-balance">0</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="token-selector-section" class="section" style="display: none;">
+            <div class="input-group">
+                <label for="community-token-select">Select Community Token</label>
+                <select id="community-token-select">
+                    <option value="">-- Select a token --</option>
+                </select>
+            </div>
+            <div id="token-info" class="info" style="display: none;">
+                <p><strong>Token:</strong> <span id="selected-token-name"></span></p>
+                <p><strong>Symbol:</strong> <span id="selected-token-symbol"></span></p>
+                <p><strong>Balance:</strong> <span id="selected-token-balance">0</span></p>
+                <p><strong>Meta Transaction Fee:</strong> <span id="selected-token-metafee">0</span></p>
+            </div>
+        </div>
+
+        <div id="main-section" style="display: none;">
+            <div class="tab-container">
+                <div class="tab active">Register Issuance</div>
+                <div class="tab">Claim Voucher</div>
+                <div class="tab">Manage Funds</div>
+            </div>
+
+            <div id="register-content" class="tab-content active">
+                <div class="info">
+                    Register a new voucher issuance with Merkle root for code verification.
+                </div>
+                <div class="input-group">
+                    <label for="issuance-name">Campaign Name</label>
+                    <input type="text" id="issuance-name" placeholder="Enter campaign name">
+                </div>
+                <div class="input-group">
+                    <label for="code-count">Number of Codes to Generate</label>
+                    <input type="number" id="code-count" placeholder="10" step="1" min="1">
+                </div>
+                <div class="input-group">
+                    <label for="claim-amount">Claim Amount Per Code</label>
+                    <input type="number" id="claim-amount" placeholder="100" step="0.000001">
+                </div>
+                <div class="input-group">
+                    <label for="claim-limit">Claim Limit Per User</label>
+                    <input type="number" id="claim-limit" placeholder="1" step="1">
+                </div>
+                <div class="input-group">
+                    <label for="initial-funds">Initial Funds</label>
+                    <div id="initial-funds-suggestion" class="info" style="font-size: 12px; padding: 8px; margin: 5px 0;">
+                        Calculation: Code Count × (Claim Amount + Meta Fee) × 1.1<br>
+                        Auto-calculated, but you can edit freely
+                    </div>
+                    <input type="number" id="initial-funds" placeholder="Auto-calculated" step="0.000001">
+                </div>
+                <div class="input-group">
+                    <label for="start-time">Start Time (YYYY-MM-DD HH:MM:SS, leave empty for now)</label>
+                    <input type="text" id="start-time" placeholder="2025-01-01 00:00:00">
+                </div>
+                <div class="input-group">
+                    <label for="end-time">End Time (YYYY-MM-DD HH:MM:SS, leave empty for no limit)</label>
+                    <input type="text" id="end-time" placeholder="2025-12-31 23:59:59">
+                </div>
+                <div id="generated-codes-info" class="info" style="display: none;">
+                    <strong>Generated Codes:</strong>
+                    <div id="codes-preview" style="max-height: 150px; overflow-y: auto; margin-top: 10px;"></div>
+                    <button type="button" id="download-codes-button" class="secondary-button small-button">Download Codes</button>
+                </div>
+                <button id="generate-codes-button" class="secondary-button">Generate Codes & Merkle Root</button>
+                <button id="register-button">Register Voucher Issuance</button>
+            </div>
+
+            <div id="claim-content" class="tab-content">
+                <div class="info">
+                    Claim voucher tokens using your code and Merkle proof.
+                </div>
+                <div class="input-group">
+                    <label for="claim-issuance-select">Select Campaign</label>
+                    <select id="claim-issuance-select">
+                        <option value="">-- Select a campaign --</option>
+                    </select>
+                    <button type="button" id="refresh-campaigns-button" class="secondary-button small-button">Refresh</button>
+                </div>
+                <div id="issuance-details" class="issuance-details" style="display: none;">
+                    <h4>Campaign Details</h4>
+                    <div class="detail-row">
+                        <span class="label">Name:</span>
+                        <span id="detail-name" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Claim Amount:</span>
+                        <span id="detail-amount" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Status:</span>
+                        <span id="detail-status" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Period:</span>
+                        <span id="detail-period" class="value"></span>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="claim-code">Voucher Code</label>
+                    <input type="text" id="claim-code" placeholder="YOUR-CODE">
+                </div>
+                <div class="input-group">
+                    <label>Merkle Proof (from localStorage)</label>
+                    <div id="proof-info" class="proof-info">No proof loaded</div>
+                </div>
+                <button id="claim-button">Claim Voucher</button>
+            </div>
+
+            <div id="manage-funds-content" class="tab-content">
+                <div class="info">
+                    Manage funds for voucher campaigns: add funds, withdraw, or view campaign information.
+                </div>
+                <div class="input-group">
+                    <label for="manage-issuance-select">Select Campaign</label>
+                    <select id="manage-issuance-select">
+                        <option value="">-- Select a campaign --</option>
+                    </select>
+                    <button type="button" id="refresh-manage-campaigns-button" class="secondary-button small-button">Refresh</button>
+                </div>
+                <div id="manage-issuance-details" class="issuance-details" style="display: none;">
+                    <h4>Campaign Information</h4>
+                    <div class="detail-row">
+                        <span class="label">Name:</span>
+                        <span id="manage-detail-name" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Status:</span>
+                        <span id="manage-detail-status" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Claim Amount:</span>
+                        <span id="manage-detail-amount" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Initial Funds:</span>
+                        <span id="manage-detail-initial-funds" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Remaining Funds:</span>
+                        <span id="manage-detail-remaining-funds" class="value"></span>
+                    </div>
+                    <div class="detail-row">
+                        <span class="label">Claimed Amount:</span>
+                        <span id="manage-detail-claimed-amount" class="value"></span>
+                    </div>
+                </div>
+                <div class="input-group">
+                    <label for="add-funds-amount">Amount to Add</label>
+                    <input type="number" id="add-funds-amount" placeholder="100" step="0.000001">
+                </div>
+                <button id="add-funds-button">Add Funds</button>
+                <div class="input-group">
+                    <label for="withdraw-funds-amount">Amount to Withdraw</label>
+                    <input type="number" id="withdraw-funds-amount" placeholder="100" step="0.000001">
+                </div>
+                <button id="withdraw-funds-button">Withdraw Funds</button>
+                <button id="terminate-issuance-button" class="secondary-button">Terminate Issuance</button>
+            </div>
+        </div>
+
+        <div id="message" class="section"></div>
+    </div>
+
+    <script type="module" src="app.js"></script>
+</body>
+</html>
