@@ -40,13 +40,13 @@ const PCE_TOKEN_ABI = [
 
 const VOUCHER_ABI = [
     ...ERC20_ABI,
-    "function registerVoucherIssuance(string issuanceId, string _name, uint256 _claimAmountPerCode, uint256 _claimLimitPerUser, uint256 _initialFundsRawAmount, uint256 _startTime, uint256 _endTime, bytes32 _merkleRoot)",
+    "function registerVoucherIssuance(string issuanceId, string _name, uint256 _amountPerClaim, uint256 _countLimitPerUser, uint256 _totalAmountLimit, uint256 _initialFunds, uint256 _startTime, uint256 _endTime, bytes32 _merkleRoot)",
     "function claimVoucher(string issuanceId, string code, bytes32[] proof)",
-    "function getVoucherIssuance(string issuanceId) view returns (tuple(string issuanceId, address owner, string name, uint256 claimAmountPerCode, uint256 claimLimitPerUser, uint256 startTime, uint256 endTime, bytes32 merkleRoot, bool isActive))",
+    "function canClaimVoucher(string issuanceId, string code, bytes32[] proof, address claimer) view returns (bool, uint8)",
+    "function getVoucherIssuanceInfo(string issuanceId) view returns (tuple(string issuanceId, address owner, string name, uint256 amountPerClaim, uint256 countLimitPerUser, uint256 totalAmountLimit, uint256 startTime, uint256 endTime, bytes32 merkleRoot, bool isActive, uint256 remainingAmount, uint256 claimedAmount, uint256 claimedDisplayAmount, uint256 totalClaimCount))",
     "function getVoucherIssuanceIds() view returns (string[])",
-    "function getVoucherFundsInfo(string issuanceId) view returns (uint256 remainingAmount, uint256 claimedAmount)",
-    "function addVoucherFunds(string issuanceId, uint256 rawAmount)",
-    "function withdrawVoucherFunds(string issuanceId, uint256 rawAmount)",
+    "function addVoucherFunds(string issuanceId, uint256 amount)",
+    "function withdrawVoucherFunds(string issuanceId, uint256 amount)",
     "function terminateVoucherIssuance(string issuanceId)",
     "function getMetaTransactionFee() view returns (uint256)",
     "function owner() view returns (address)"
@@ -494,6 +494,7 @@ async function registerVoucherIssuance() {
         const name = document.getElementById('issuance-name').value;
         const claimAmount = document.getElementById('claim-amount').value;
         const claimLimit = document.getElementById('claim-limit').value;
+        const maxTotalClaim = document.getElementById('max-total-claim').value || '0';
         const initialFunds = document.getElementById('initial-funds').value;
         const startTimeStr = document.getElementById('start-time').value;
         const endTimeStr = document.getElementById('end-time').value;
@@ -513,8 +514,12 @@ async function registerVoucherIssuance() {
             return;
         }
 
+        // Get decimals and convert to Wei (displayBalance unit)
         const decimals = await selectedCommunityToken.decimals();
         const claimAmountWei = ethers.parseUnits(claimAmount, decimals);
+        const maxTotalClaimWei = maxTotalClaim === '' || maxTotalClaim === '0'
+            ? 0n
+            : ethers.parseUnits(maxTotalClaim, decimals);
         const initialFundsWei = ethers.parseUnits(initialFunds, decimals);
 
         showMessage('Registering voucher issuance...');
@@ -525,6 +530,7 @@ async function registerVoucherIssuance() {
                 name,
                 claimAmountWei,
                 claimLimit,
+                maxTotalClaimWei,
                 initialFundsWei,
                 startTime,
                 endTime,
@@ -543,6 +549,7 @@ async function registerVoucherIssuance() {
                     name,
                     claimAmountWei,
                     claimLimit,
+                    maxTotalClaimWei,
                     initialFundsWei,
                     startTime,
                     endTime,
@@ -581,6 +588,10 @@ async function registerVoucherIssuance() {
         generatedMerkleRoot = null;
         generatedIssuanceId = null;
 
+        // Reload campaigns list to show the new campaign
+        await loadCampaigns();
+        await loadManageCampaigns();
+
     } catch (error) {
         showError('Registration failed: ' + error.message);
     }
@@ -606,17 +617,23 @@ async function loadCampaigns() {
 
         const decimals = await selectedCommunityToken.decimals();
         const now = Math.floor(Date.now() / 1000);
+        let activeCount = 0;
 
         for (const issuanceId of issuanceIds) {
             try {
-                const issuance = await selectedCommunityToken.getVoucherIssuance(issuanceId);
+                const issuance = await selectedCommunityToken.getVoucherIssuanceInfo(issuanceId);
+
+                // Skip terminated campaigns
+                if (!issuance.isActive) {
+                    continue;
+                }
+
+                activeCount++;
                 const startTime = Number(issuance.startTime);
                 const endTime = Number(issuance.endTime);
 
                 let statusText = '';
-                if (!issuance.isActive) {
-                    statusText = ' [Terminated]';
-                } else if (startTime > now) {
+                if (startTime > now) {
                     statusText = ' [Pending]';
                 } else if (endTime > 0 && endTime < now) {
                     statusText = ' [Ended]';
@@ -632,12 +649,17 @@ async function loadCampaigns() {
                     issuanceId: String(issuance.issuanceId),
                     owner: String(issuance.owner),
                     name: String(issuance.name),
-                    claimAmountPerCode: String(issuance.claimAmountPerCode),
-                    claimLimitPerUser: String(issuance.claimLimitPerUser),
+                    amountPerClaim: String(issuance.amountPerClaim),
+                    countLimitPerUser: String(issuance.countLimitPerUser),
+                    totalAmountLimit: String(issuance.totalAmountLimit),
                     startTime: startTime,
                     endTime: endTime,
                     merkleRoot: String(issuance.merkleRoot),
                     isActive: Boolean(issuance.isActive),
+                    remainingAmount: String(issuance.remainingAmount),
+                    claimedAmount: String(issuance.claimedAmount),
+                    claimedDisplayAmount: String(issuance.claimedDisplayAmount),
+                    totalClaimCount: String(issuance.totalClaimCount),
                     decimals: Number(decimals)
                 };
                 option.dataset.issuance = JSON.stringify(issuanceData);
@@ -648,7 +670,7 @@ async function loadCampaigns() {
             }
         }
 
-        showSuccess(`Loaded ${issuanceIds.length} campaign(s)`);
+        showSuccess(`Loaded ${activeCount} active campaign(s)`);
 
     } catch (error) {
         showError('Failed to load campaigns: ' + error.message);
@@ -700,7 +722,7 @@ async function onCampaignSelected() {
     };
 
     document.getElementById('detail-name').textContent = issuanceData.name;
-    document.getElementById('detail-amount').textContent = ethers.formatUnits(issuanceData.claimAmountPerCode, issuanceData.decimals);
+    document.getElementById('detail-amount').textContent = ethers.formatUnits(issuanceData.amountPerClaim, issuanceData.decimals);
     document.getElementById('detail-status').textContent = status;
     document.getElementById('detail-period').textContent = `${formatDate(startTime)} - ${formatDate(endTime)}`;
 
@@ -742,6 +764,33 @@ async function claimVoucher() {
 
         if (!proof) {
             showError('Code not found in stored proofs for this issuance');
+            return;
+        }
+
+        // Pre-check if claim is possible using canClaimVoucher
+        showMessage('Checking if claim is possible...');
+        const claimer = await signer.getAddress();
+        const [canClaim, errorCode] = await selectedCommunityToken.canClaimVoucher(
+            issuanceId,
+            code,
+            proof,
+            claimer
+        );
+
+        if (!canClaim) {
+            const errorMessages = {
+                1: 'Issuance not found',
+                2: 'Issuance is not active',
+                3: 'Campaign has not started yet',
+                4: 'Campaign has already ended',
+                5: 'You have reached your claim limit for this campaign',
+                6: 'Insufficient funds in the campaign',
+                7: 'Maximum total claim amount would be exceeded',
+                8: 'Invalid Merkle proof (code verification failed)',
+                9: 'This code has already been used'
+            };
+            const errorMessage = errorMessages[errorCode] || `Unknown error (code: ${errorCode})`;
+            showError(`Cannot claim: ${errorMessage}`);
             return;
         }
 
@@ -854,17 +903,23 @@ async function loadManageCampaigns() {
 
         const decimals = await selectedCommunityToken.decimals();
         const now = Math.floor(Date.now() / 1000);
+        let activeCount = 0;
 
         for (const issuanceId of issuanceIds) {
             try {
-                const issuance = await selectedCommunityToken.getVoucherIssuance(issuanceId);
+                const issuance = await selectedCommunityToken.getVoucherIssuanceInfo(issuanceId);
+
+                // Skip terminated campaigns
+                if (!issuance.isActive) {
+                    continue;
+                }
+
+                activeCount++;
                 const startTime = Number(issuance.startTime);
                 const endTime = Number(issuance.endTime);
 
                 let statusText = '';
-                if (!issuance.isActive) {
-                    statusText = ' [Terminated]';
-                } else if (startTime > now) {
+                if (startTime > now) {
                     statusText = ' [Pending]';
                 } else if (endTime > 0 && endTime < now) {
                     statusText = ' [Ended]';
@@ -880,12 +935,17 @@ async function loadManageCampaigns() {
                     issuanceId: String(issuance.issuanceId),
                     owner: String(issuance.owner),
                     name: String(issuance.name),
-                    claimAmountPerCode: String(issuance.claimAmountPerCode),
-                    claimLimitPerUser: String(issuance.claimLimitPerUser),
+                    amountPerClaim: String(issuance.amountPerClaim),
+                    countLimitPerUser: String(issuance.countLimitPerUser),
+                    totalAmountLimit: String(issuance.totalAmountLimit),
                     startTime: startTime,
                     endTime: endTime,
                     merkleRoot: String(issuance.merkleRoot),
                     isActive: Boolean(issuance.isActive),
+                    remainingAmount: String(issuance.remainingAmount),
+                    claimedAmount: String(issuance.claimedAmount),
+                    claimedDisplayAmount: String(issuance.claimedDisplayAmount),
+                    totalClaimCount: String(issuance.totalClaimCount),
                     decimals: Number(decimals)
                 };
                 option.dataset.issuance = JSON.stringify(issuanceData);
@@ -896,7 +956,7 @@ async function loadManageCampaigns() {
             }
         }
 
-        showSuccess(`Loaded ${issuanceIds.length} campaign(s)`);
+        showSuccess(`Loaded ${activeCount} active campaign(s)`);
 
     } catch (error) {
         showError('Failed to load campaigns: ' + error.message);
@@ -935,22 +995,14 @@ async function onManageCampaignSelected() {
     document.getElementById('manage-detail-status').textContent = status;
     document.getElementById('manage-detail-amount').textContent = ethers.formatUnits(issuanceData.claimAmountPerCode, issuanceData.decimals);
 
-    // Load funds info
-    try {
-        const result = await selectedCommunityToken.getVoucherFundsInfo(issuanceId);
-        const remainingAmount = result[0]; // or result.remainingAmount
-        const claimedAmount = result[1];   // or result.claimedAmount
-        const initialFunds = remainingAmount + claimedAmount;
+    // Display funds info from cached data
+    const remainingAmount = BigInt(issuanceData.remainingAmount);
+    const claimedAmount = BigInt(issuanceData.claimedAmount);
+    const initialFunds = remainingAmount + claimedAmount;
 
-        document.getElementById('manage-detail-initial-funds').textContent = ethers.formatUnits(initialFunds, issuanceData.decimals);
-        document.getElementById('manage-detail-remaining-funds').textContent = ethers.formatUnits(remainingAmount, issuanceData.decimals);
-        document.getElementById('manage-detail-claimed-amount').textContent = ethers.formatUnits(claimedAmount, issuanceData.decimals);
-    } catch (error) {
-        console.error('Failed to load funds info:', error);
-        document.getElementById('manage-detail-initial-funds').textContent = 'N/A';
-        document.getElementById('manage-detail-remaining-funds').textContent = 'N/A';
-        document.getElementById('manage-detail-claimed-amount').textContent = 'N/A';
-    }
+    document.getElementById('manage-detail-initial-funds').textContent = ethers.formatUnits(initialFunds, issuanceData.decimals);
+    document.getElementById('manage-detail-remaining-funds').textContent = ethers.formatUnits(remainingAmount, issuanceData.decimals);
+    document.getElementById('manage-detail-claimed-amount').textContent = ethers.formatUnits(claimedAmount, issuanceData.decimals);
 
     detailsDiv.style.display = 'block';
 }
@@ -975,6 +1027,7 @@ async function addFunds() {
             return;
         }
 
+        // Convert to Wei (displayBalance unit)
         const decimals = await selectedCommunityToken.decimals();
         const amountWei = ethers.parseUnits(amount, decimals);
 
@@ -1014,6 +1067,7 @@ async function withdrawFunds() {
             return;
         }
 
+        // Convert to Wei (displayBalance unit)
         const decimals = await selectedCommunityToken.decimals();
         const amountWei = ethers.parseUnits(amount, decimals);
 
