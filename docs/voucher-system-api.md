@@ -119,6 +119,140 @@ event VoucherClaimed(
 
 ---
 
+### 2-2. claimVoucherWithAuthorization
+
+メタトランザクション機能を使用してバウチャーコードでトークンをクレームします。署名を使用することで、ガス代を別のアドレス（リレイヤー）が負担できます。
+
+```solidity
+function claimVoucherWithAuthorization(
+    address claimer,
+    string memory issuanceId,
+    string memory code,
+    bytes32[] calldata proof,
+    uint256 validAfter,
+    uint256 validBefore,
+    bytes32 nonce,
+    uint8 v,
+    bytes32 r,
+    bytes32 s
+) external
+```
+
+**パラメータ**:
+- `claimer`: クレームするユーザーのアドレス（署名の所有者）
+- `issuanceId`: キャンペーンID
+- `code`: バウチャーコード（生の文字列）
+- `proof`: Merkle Proof（keccak256(code)を証明するハッシュの配列）
+- `validAfter`: 署名が有効になる時刻（Unixタイムスタンプ）
+- `validBefore`: 署名が有効期限切れになる時刻（Unixタイムスタンプ）
+- `nonce`: 一度だけ使用可能な一意の値（同じnonceは再利用不可）
+- `v`, `r`, `s`: ECDSA署名のパラメータ
+
+**使用例**:
+```javascript
+const claimer = await signer.getAddress();
+const code = "CODE-1234";
+const proof = generateMerkleProof(leaves, code);
+const issuanceId = "voucher_1234567890_abc";
+
+// 署名の有効期間を設定（例: 現在から1時間後まで有効）
+const now = Math.floor(Date.now() / 1000);
+const validAfter = now;
+const validBefore = now + 3600; // 1時間後
+
+// 一意のnonceを生成（例: ランダムなbytes32）
+const nonce = ethers.randomBytes(32);
+
+// DOMAIN_SEPARATORを取得
+const domainSeparator = await communityToken.DOMAIN_SEPARATOR();
+
+// 署名データを準備
+const CLAIM_WITH_AUTHORIZATION_TYPEHASH = "0x7e6c8f6b45c0f4e8c8c0e6c7c8b9a0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7";
+const data = ethers.AbiCoder.defaultAbiCoder().encode(
+    ["bytes32", "address", "bytes32", "bytes32", "uint256", "uint256", "bytes32"],
+    [
+        CLAIM_WITH_AUTHORIZATION_TYPEHASH,
+        claimer,
+        ethers.keccak256(ethers.toUtf8Bytes(issuanceId)),
+        ethers.keccak256(ethers.toUtf8Bytes(code)),
+        validAfter,
+        validBefore,
+        nonce
+    ]
+);
+
+// EIP-712形式でダイジェストを作成
+const dataHash = ethers.keccak256(data);
+const digest = ethers.keccak256(
+    ethers.concat([
+        "0x1901",
+        domainSeparator,
+        dataHash
+    ])
+);
+
+// 署名を作成（ハッシュを直接署名する必要があるため、signingKeyを使用）
+const sig = signer.signingKey.sign(digest);
+
+// claimVoucherWithAuthorizationを呼び出し（リレイヤーが実行）
+await communityToken.claimVoucherWithAuthorization(
+    claimer,
+    issuanceId,
+    code,
+    proof,
+    validAfter,
+    validBefore,
+    nonce,
+    sig.v,
+    sig.r,
+    sig.s
+);
+```
+
+**検証ロジック**:
+1. `claimVoucher`と同じ検証（キャンペーン有効性、時刻範囲、クレーム上限など）
+2. `validAfter`より後であること
+3. `validBefore`より前であること
+4. `nonce`が未使用であること
+5. 署名が`claimer`のものであること
+6. クレーム金額がメタトランザクション手数料より大きいこと
+
+**メタトランザクション手数料**:
+- クレーム金額から自動的にメタトランザクション手数料が差し引かれます
+- 手数料は`_msgSender()`（リレイヤー）に支払われます
+- 残りの金額が`claimer`に転送されます
+- 手数料は`getMetaTransactionFee()`で確認できます
+
+**イベント**:
+```solidity
+event VoucherClaimed(
+    string indexed issuanceId,
+    address indexed claimer,
+    string code,
+    uint256 amount
+);
+
+event AuthorizationUsed(
+    address indexed account,
+    bytes32 indexed nonce
+);
+
+event MetaTransactionFeeCollected(
+    address indexed claimer,
+    address indexed relayer,
+    uint256 displayFee,
+    uint256 rawFee
+);
+```
+
+**注意事項**:
+- `nonce`は一度使用すると再利用できません
+- 署名の有効期間（`validAfter`〜`validBefore`）を適切に設定してください
+- クレーム金額はメタトランザクション手数料より大きい必要があります
+- リレイヤーは任意のアドレスで、ガス代を負担します
+
+---
+
 ### 3. canClaimVoucher
 
 クレーム可否を事前チェックします（view関数）。
