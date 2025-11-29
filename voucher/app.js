@@ -40,11 +40,11 @@ const PCE_TOKEN_ABI = [
 
 const VOUCHER_ABI = [
     ...ERC20_ABI,
-    "function registerVoucherIssuance(string issuanceId, string _name, uint256 _amountPerClaim, uint256 _countLimitPerUser, uint256 _totalAmountLimit, uint256 _initialFunds, uint256 _startTime, uint256 _endTime, bytes32 _merkleRoot)",
+    "function registerVoucherIssuance(string issuanceId, string _name, uint256 _amountPerClaim, uint256 _countLimitPerUser, uint256 _totalAmountLimit, uint256 _initialFunds, uint256 _startTime, uint256 _endTime, bytes32 _merkleRoot, string _ipfsCid)",
     "function claimVoucher(string issuanceId, string code, bytes32[] proof)",
     "function claimVoucherWithAuthorization(address claimer, string issuanceId, string code, bytes32[] proof, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)",
     "function canClaimVoucher(string issuanceId, string code, bytes32[] proof, address claimer) view returns (bool, uint8)",
-    "function getVoucherIssuanceInfo(string issuanceId) view returns (tuple(string issuanceId, address owner, string name, uint256 amountPerClaim, uint256 countLimitPerUser, uint256 totalAmountLimit, uint256 startTime, uint256 endTime, bytes32 merkleRoot, bool isActive, uint256 remainingAmount, uint256 claimedAmount, uint256 claimedDisplayAmount, uint256 totalClaimCount))",
+    "function getVoucherIssuanceInfo(string issuanceId) view returns (tuple(string issuanceId, address owner, string name, uint256 amountPerClaim, uint256 countLimitPerUser, uint256 totalAmountLimit, uint256 startTime, uint256 endTime, bytes32 merkleRoot, bool isActive, uint256 remainingAmount, uint256 claimedAmount, uint256 claimedDisplayAmount, uint256 totalClaimCount, string ipfsCid))",
     "function getVoucherIssuanceIds() view returns (string[])",
     "function addVoucherFunds(string issuanceId, uint256 amount)",
     "function withdrawVoucherFunds(string issuanceId, uint256 amount)",
@@ -58,15 +58,17 @@ const VOUCHER_ABI = [
 // Default TYPEHASH (can be fetched from contract)
 const DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH = "0x7e6c8f6b45c0f4e8c8c0e6c7c8b9a0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7";
 
+// Voucher Store API (IPFS-backed storage)
+const VOUCHER_STORE_API = "https://voucher-store.peace-coin.org";
+
 let provider, signer, pceToken, selectedCommunityToken;
 let currentProof = null;
 let generatedCodes = null;
 let generatedMerkleRoot = null;
 let generatedIssuanceId = null;
 
-// LocalStorage key prefix with version
+// LocalStorage key prefix with version (for token cache only)
 const CACHE_VERSION = 'v2';
-const STORAGE_PREFIX = 'voucher_proofs_';
 const TOKENS_CACHE_PREFIX = `voucher_tokens_cache_${CACHE_VERSION}_`;
 
 // Clean up old cache versions
@@ -82,6 +84,53 @@ function cleanupOldCache() {
     if (keysToRemove.length > 0) {
         console.log(`Cleaned up ${keysToRemove.length} old cache entries`);
     }
+}
+
+// IPFS Storage Functions (via pce-voucher-store API)
+async function uploadLeavesToIPFS(leaves) {
+    try {
+        const response = await fetch(`${VOUCHER_STORE_API}/api/leaves`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(leaves)
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to upload to IPFS: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        console.log('Uploaded leaves to IPFS, CID:', data.cid);
+        return data.cid;
+    } catch (error) {
+        console.error('Failed to upload leaves to IPFS:', error);
+        throw error;
+    }
+}
+
+async function fetchLeavesFromIPFS(cid) {
+    try {
+        const response = await fetch(`${VOUCHER_STORE_API}/api/leaves?cid=${encodeURIComponent(cid)}`);
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch from IPFS: ${response.statusText}`);
+        }
+
+        const leaves = await response.json();
+        console.log('Fetched leaves from IPFS, count:', leaves.length);
+        return leaves;
+    } catch (error) {
+        console.error('Failed to fetch leaves from IPFS:', error);
+        throw error;
+    }
+}
+
+// Get leaves from IPFS
+async function getLeaves(ipfsCid) {
+    if (!ipfsCid) {
+        return null;
+    }
+    return await fetchLeavesFromIPFS(ipfsCid);
 }
 
 async function connectWallet() {
@@ -528,7 +577,19 @@ async function registerVoucherIssuance() {
             : ethers.parseUnits(maxTotalClaim, decimals);
         const initialFundsWei = ethers.parseUnits(initialFunds, decimals);
 
-        showMessage('Registering voucher issuance...');
+        // Upload leaves to IPFS first
+        showMessage('Uploading leaves to IPFS...');
+        const leaves = generatedCodes.map(code => ethers.keccak256(ethers.toUtf8Bytes(code)));
+        let ipfsCid = '';
+        try {
+            ipfsCid = await uploadLeavesToIPFS(leaves);
+            showMessage(`Leaves uploaded to IPFS (CID: ${ipfsCid.substring(0, 16)}...)`);
+        } catch (error) {
+            console.error('Failed to upload to IPFS, continuing without CID:', error);
+            showMessage('Warning: Failed to upload to IPFS, continuing without CID...');
+        }
+
+        showMessage('Registering voucher issuance on blockchain...');
 
         try {
             const tx = await selectedCommunityToken.registerVoucherIssuance(
@@ -540,7 +601,8 @@ async function registerVoucherIssuance() {
                 initialFundsWei,
                 startTime,
                 endTime,
-                generatedMerkleRoot
+                generatedMerkleRoot,
+                ipfsCid
             );
 
             await tx.wait();
@@ -559,7 +621,8 @@ async function registerVoucherIssuance() {
                     initialFundsWei,
                     startTime,
                     endTime,
-                    generatedMerkleRoot
+                    generatedMerkleRoot,
+                    ipfsCid
                 );
             } catch (estimateError) {
                 console.error('Estimate gas error:', estimateError);
@@ -573,12 +636,8 @@ async function registerVoucherIssuance() {
             throw txError;
         }
 
-        // Save hashed codes (leaves) to localStorage for proof generation
-        // We only store hashes for security - raw codes are only in the downloaded file
-        const leaves = generatedCodes.map(code => ethers.keccak256(ethers.toUtf8Bytes(code)));
-        localStorage.setItem(STORAGE_PREFIX + generatedIssuanceId, JSON.stringify(leaves));
-
-        showSuccess('Voucher issuance registered successfully! Codes saved to localStorage.');
+        const cidMessage = ipfsCid ? ` (IPFS CID: ${ipfsCid.substring(0, 16)}...)` : '';
+        showSuccess(`Voucher issuance registered successfully!${cidMessage}`);
 
         // Clear form and generated data
         document.getElementById('issuance-name').value = '';
@@ -666,7 +725,8 @@ async function loadCampaigns() {
                     claimedAmount: String(issuance.claimedAmount),
                     claimedDisplayAmount: String(issuance.claimedDisplayAmount),
                     totalClaimCount: String(issuance.totalClaimCount),
-                    decimals: Number(decimals)
+                    decimals: Number(decimals),
+                    ipfsCid: String(issuance.ipfsCid || '')
                 };
                 option.dataset.issuance = JSON.stringify(issuanceData);
                 select.appendChild(option);
@@ -734,14 +794,26 @@ async function onCampaignSelected() {
 
     detailsDiv.style.display = 'block';
 
-    // Auto-load proof
-    const storedData = localStorage.getItem(STORAGE_PREFIX + issuanceId);
-    if (storedData) {
-        currentProof = JSON.parse(storedData);
-        document.getElementById('proof-info').textContent = `Loaded ${currentProof.length} codes from storage`;
+    // Auto-load proof from IPFS
+    if (issuanceData.ipfsCid) {
+        document.getElementById('proof-info').textContent = 'Loading proof data from IPFS...';
+        try {
+            const leaves = await getLeaves(issuanceData.ipfsCid);
+            if (leaves) {
+                currentProof = leaves;
+                document.getElementById('proof-info').textContent = `Loaded ${currentProof.length} codes from IPFS`;
+            } else {
+                currentProof = null;
+                document.getElementById('proof-info').textContent = 'No proof data available';
+            }
+        } catch (error) {
+            console.error('Failed to load proof from IPFS:', error);
+            currentProof = null;
+            document.getElementById('proof-info').textContent = `Failed to load proof: ${error.message}`;
+        }
     } else {
         currentProof = null;
-        document.getElementById('proof-info').textContent = 'No proof loaded for this campaign';
+        document.getElementById('proof-info').textContent = 'No IPFS CID available for this campaign';
     }
 }
 
@@ -789,12 +861,12 @@ async function prepareClaimData(skipCanClaimCheck = false) {
     }
 
     if (!currentProof) {
-        throw new Error('Please load proof from storage first');
+        throw new Error('Please wait for proof data to load from IPFS');
     }
 
-    const proof = generateProofForCode(issuanceId, code);
+    const proof = generateProofForCode(code);
     if (!proof) {
-        throw new Error('Code not found in stored proofs for this issuance');
+        throw new Error('Code not found in proof data');
     }
 
     const claimer = await signer.getAddress();
@@ -861,7 +933,7 @@ async function claimVoucherWithAuthorization() {
         const { issuanceId, code, proof, claimer } = await prepareClaimData();
 
         showMessage('Preparing signature...');
-        const { domain, types, value, validAfter, validBefore, nonce } = 
+        const { domain, types, value, validAfter, validBefore, nonce } =
             await prepareEIP712SignatureData(claimer, issuanceId, code);
 
         console.log('=== EIP-712 Signature Debug ===');
@@ -892,13 +964,20 @@ async function claimVoucherWithAuthorization() {
     }
 }
 
+// Helper to serialize objects with BigInt
+function jsonStringifyWithBigInt(obj) {
+    return JSON.stringify(obj, (key, value) =>
+        typeof value === 'bigint' ? value.toString() : value
+    , 2);
+}
+
 // Generate signature data for external use (e.g., relayer)
 async function generateClaimSignature() {
     try {
         showMessage('Preparing signature data...');
         const { issuanceId, code, proof, claimer } = await prepareClaimData(true); // skip canClaim check
 
-        const { domain, types, value, tokenAddress, validAfter, validBefore, nonce } = 
+        const { domain, types, value, tokenAddress, validAfter, validBefore, nonce } =
             await prepareEIP712SignatureData(claimer, issuanceId, code);
 
         showMessage('Please sign the message in your wallet...');
@@ -925,9 +1004,9 @@ async function generateClaimSignature() {
             debug: { domainSeparator, typeHash, domain, types, value }
         };
 
-        console.log('Generated Signature Data:', JSON.stringify(signatureData, null, 2));
-        
-        const jsonOutput = JSON.stringify(signatureData, null, 2);
+        const jsonOutput = jsonStringifyWithBigInt(signatureData);
+        console.log('Generated Signature Data:', jsonOutput);
+
         showSuccess(`Signature generated! Check console for details.\n\n<pre style="text-align:left;font-size:10px;max-height:200px;overflow:auto;">${jsonOutput}</pre>`);
 
     } catch (error) {
@@ -936,19 +1015,17 @@ async function generateClaimSignature() {
     }
 }
 
-function generateProofForCode(issuanceId, code) {
-    const storedData = localStorage.getItem(STORAGE_PREFIX + issuanceId);
-    if (!storedData) return null;
+function generateProofForCode(code) {
+    if (!currentProof) return null;
 
     try {
-        // LocalStorage contains hashed codes (leaves), not raw codes
-        const leaves = JSON.parse(storedData);
+        // currentProof contains hashed codes (leaves) loaded from IPFS
         const hashedCode = ethers.keccak256(ethers.toUtf8Bytes(code));
 
-        if (!leaves.includes(hashedCode)) return null;
+        if (!currentProof.includes(hashedCode)) return null;
 
         // Generate Merkle proof from leaves
-        const proof = generateMerkleProofFromLeaves(leaves, hashedCode);
+        const proof = generateMerkleProofFromLeaves(currentProof, hashedCode);
         return proof;
     } catch (error) {
         console.error('Failed to generate proof:', error);
@@ -1072,7 +1149,8 @@ async function loadManageCampaigns() {
                     claimedAmount: String(issuance.claimedAmount),
                     claimedDisplayAmount: String(issuance.claimedDisplayAmount),
                     totalClaimCount: String(issuance.totalClaimCount),
-                    decimals: Number(decimals)
+                    decimals: Number(decimals),
+                    ipfsCid: String(issuance.ipfsCid || '')
                 };
                 option.dataset.issuance = JSON.stringify(issuanceData);
                 select.appendChild(option);
