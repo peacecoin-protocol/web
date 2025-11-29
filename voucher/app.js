@@ -747,68 +747,15 @@ async function onCampaignSelected() {
 
 async function claimVoucher() {
     try {
-        if (!selectedCommunityToken) {
-            showError('Please select a community token first');
-            return;
-        }
-
-        const issuanceId = document.getElementById('claim-issuance-select').value;
-        const code = document.getElementById('claim-code').value;
-
-        if (!issuanceId || !code) {
-            showError('Please select a campaign and enter code');
-            return;
-        }
-
-        if (!currentProof) {
-            showError('Please load proof from storage first');
-            return;
-        }
-
-        // Generate Merkle proof for this code
-        const proof = generateProofForCode(issuanceId, code);
-
-        if (!proof) {
-            showError('Code not found in stored proofs for this issuance');
-            return;
-        }
-
-        // Pre-check if claim is possible using canClaimVoucher
         showMessage('Checking if claim is possible...');
-        const claimer = await signer.getAddress();
-        const [canClaim, errorCode] = await selectedCommunityToken.canClaimVoucher(
-            issuanceId,
-            code,
-            proof,
-            claimer
-        );
-
-        if (!canClaim) {
-            const errorMessages = {
-                1: 'Issuance not found',
-                2: 'Issuance is not active',
-                3: 'Campaign has not started yet',
-                4: 'Campaign has already ended',
-                5: 'You have reached your claim limit for this campaign',
-                6: 'Insufficient funds in the campaign',
-                7: 'Maximum total claim amount would be exceeded',
-                8: 'Invalid Merkle proof (code verification failed)',
-                9: 'This code has already been used'
-            };
-            const errorMessage = errorMessages[errorCode] || `Unknown error (code: ${errorCode})`;
-            showError(`Cannot claim: ${errorMessage}`);
-            return;
-        }
+        const { issuanceId, code, proof } = await prepareClaimData();
 
         showMessage('Claiming voucher...');
-
         const tx = await selectedCommunityToken.claimVoucher(issuanceId, code, proof);
         await tx.wait();
 
-        // Update selected token balance
         await onCommunityTokenSelected();
         showSuccess('Voucher claimed successfully!');
-
         document.getElementById('claim-code').value = '';
 
     } catch (error) {
@@ -816,43 +763,46 @@ async function claimVoucher() {
     }
 }
 
-async function claimVoucherWithAuthorization() {
-    try {
-        if (!selectedCommunityToken) {
-            showError('Please select a community token first');
-            return;
-        }
+// EIP-712 type definition for ClaimWithAuthorization
+const CLAIM_AUTHORIZATION_TYPES = {
+    ClaimWithAuthorization: [
+        { name: "claimer", type: "address" },
+        { name: "issuanceId", type: "string" },
+        { name: "code", type: "string" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" }
+    ]
+};
 
-        const issuanceId = document.getElementById('claim-issuance-select').value;
-        const code = document.getElementById('claim-code').value;
+// Prepare claim data (validation, proof generation)
+async function prepareClaimData(skipCanClaimCheck = false) {
+    if (!selectedCommunityToken) {
+        throw new Error('Please select a community token first');
+    }
 
-        if (!issuanceId || !code) {
-            showError('Please select a campaign and enter code');
-            return;
-        }
+    const issuanceId = document.getElementById('claim-issuance-select').value;
+    const code = document.getElementById('claim-code').value;
 
-        if (!currentProof) {
-            showError('Please load proof from storage first');
-            return;
-        }
+    if (!issuanceId || !code) {
+        throw new Error('Please select a campaign and enter code');
+    }
 
-        // Generate Merkle proof for this code
-        const proof = generateProofForCode(issuanceId, code);
+    if (!currentProof) {
+        throw new Error('Please load proof from storage first');
+    }
 
-        if (!proof) {
-            showError('Code not found in stored proofs for this issuance');
-            return;
-        }
+    const proof = generateProofForCode(issuanceId, code);
+    if (!proof) {
+        throw new Error('Code not found in stored proofs for this issuance');
+    }
 
-        const claimer = await signer.getAddress();
+    const claimer = await signer.getAddress();
 
-        // Pre-check if claim is possible using canClaimVoucher
-        showMessage('Checking if claim is possible...');
+    // Pre-check if claim is possible
+    if (!skipCanClaimCheck) {
         const [canClaim, errorCode] = await selectedCommunityToken.canClaimVoucher(
-            issuanceId,
-            code,
-            proof,
-            claimer
+            issuanceId, code, proof, claimer
         );
 
         if (!canClaim) {
@@ -867,102 +817,73 @@ async function claimVoucherWithAuthorization() {
                 8: 'Invalid Merkle proof (code verification failed)',
                 9: 'This code has already been used'
             };
-            const errorMessage = errorMessages[errorCode] || `Unknown error (code: ${errorCode})`;
-            showError(`Cannot claim: ${errorMessage}`);
-            return;
+            throw new Error(errorMessages[errorCode] || `Unknown error (code: ${errorCode})`);
         }
+    }
 
-        showMessage('Generating signature for meta-transaction...');
+    return { issuanceId, code, proof, claimer };
+}
 
-        // Get DOMAIN_SEPARATOR and TYPEHASH from contract
-        let domainSeparator, typeHash;
-        try {
-            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
-            typeHash = await selectedCommunityToken.CLAIM_WITH_AUTHORIZATION_TYPEHASH();
-        } catch (e) {
-            console.warn('Failed to fetch TYPEHASH from contract, using default:', e);
-            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
-            typeHash = DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH;
-        }
+// Prepare EIP-712 signature data
+async function prepareEIP712SignatureData(claimer, issuanceId, code) {
+    const tokenAddress = await selectedCommunityToken.getAddress();
+    const tokenName = await selectedCommunityToken.name();
+    const chainId = (await provider.getNetwork()).chainId;
 
-        // Set validity window (valid from now for 1 hour)
-        const now = Math.floor(Date.now() / 1000);
-        const validAfter = now - 60; // 1 minute ago (to account for clock skew)
-        const validBefore = now + 3600; // 1 hour from now
+    const now = Math.floor(Date.now() / 1000);
+    const validAfter = now - 60; // 1 minute ago (clock skew)
+    const validBefore = now + 3600; // 1 hour from now
+    const nonce = ethers.hexlify(ethers.randomBytes(32));
 
-        // Generate random nonce
-        const nonce = ethers.hexlify(ethers.randomBytes(32));
+    const domain = {
+        name: tokenName,
+        version: "1",
+        chainId: chainId,
+        verifyingContract: tokenAddress
+    };
 
-        // Use EIP-712 typed data signing
-        showMessage('Please sign the message in your wallet...');
-        
-        const tokenAddress = await selectedCommunityToken.getAddress();
-        const tokenName = await selectedCommunityToken.name();
-        const chainId = (await provider.getNetwork()).chainId;
-        
-        const domain = {
-            name: tokenName,
-            version: "1",
-            chainId: chainId,
-            verifyingContract: tokenAddress
-        };
-        
-        const types = {
-            ClaimWithAuthorization: [
-                { name: "claimer", type: "address" },
-                { name: "issuanceId", type: "string" },
-                { name: "code", type: "string" },
-                { name: "validAfter", type: "uint256" },
-                { name: "validBefore", type: "uint256" },
-                { name: "nonce", type: "bytes32" }
-            ]
-        };
-        
-        const value = {
-            claimer: claimer,
-            issuanceId: issuanceId,
-            code: code,
-            validAfter: validAfter,
-            validBefore: validBefore,
-            nonce: nonce
-        };
-        
+    const value = {
+        claimer, issuanceId, code, validAfter, validBefore, nonce
+    };
+
+    return { domain, types: CLAIM_AUTHORIZATION_TYPES, value, tokenAddress, validAfter, validBefore, nonce };
+}
+
+// Sign with EIP-712
+async function signEIP712(domain, types, value) {
+    const signature = await signer.signTypedData(domain, types, value);
+    return ethers.Signature.from(signature);
+}
+
+async function claimVoucherWithAuthorization() {
+    try {
+        showMessage('Checking if claim is possible...');
+        const { issuanceId, code, proof, claimer } = await prepareClaimData();
+
+        showMessage('Preparing signature...');
+        const { domain, types, value, validAfter, validBefore, nonce } = 
+            await prepareEIP712SignatureData(claimer, issuanceId, code);
+
         console.log('=== EIP-712 Signature Debug ===');
         console.log('Domain:', domain);
         console.log('Types:', types);
         console.log('Value:', value);
-        console.log('DOMAIN_SEPARATOR from contract:', domainSeparator);
-        console.log('TYPEHASH from contract:', typeHash);
-        
-        const signature = await signer.signTypedData(domain, types, value);
-        const sig = ethers.Signature.from(signature);
-        
-        console.log('Signature:', signature);
-        console.log('v:', sig.v);
-        console.log('r:', sig.r);
-        console.log('s:', sig.s);
+
+        showMessage('Please sign the message in your wallet...');
+        const sig = await signEIP712(domain, types, value);
+
+        console.log('v:', sig.v, 'r:', sig.r, 's:', sig.s);
 
         showMessage('Claiming voucher with authorization...');
-
-        // Call claimVoucherWithAuthorization
         const tx = await selectedCommunityToken.claimVoucherWithAuthorization(
-            claimer,
-            issuanceId,
-            code,
-            proof,
-            validAfter,
-            validBefore,
-            nonce,
-            sig.v,
-            sig.r,
-            sig.s
+            claimer, issuanceId, code, proof,
+            validAfter, validBefore, nonce,
+            sig.v, sig.r, sig.s
         );
         await tx.wait();
 
-        // Update selected token balance
         await onCommunityTokenSelected();
         showSuccess('Voucher claimed with authorization successfully!');
-
         document.getElementById('claim-code').value = '';
 
     } catch (error) {
@@ -974,111 +895,38 @@ async function claimVoucherWithAuthorization() {
 // Generate signature data for external use (e.g., relayer)
 async function generateClaimSignature() {
     try {
-        if (!selectedCommunityToken) {
-            showError('Please select a community token first');
-            return;
-        }
+        showMessage('Preparing signature data...');
+        const { issuanceId, code, proof, claimer } = await prepareClaimData(true); // skip canClaim check
 
-        const issuanceId = document.getElementById('claim-issuance-select').value;
-        const code = document.getElementById('claim-code').value;
+        const { domain, types, value, tokenAddress, validAfter, validBefore, nonce } = 
+            await prepareEIP712SignatureData(claimer, issuanceId, code);
 
-        if (!issuanceId || !code) {
-            showError('Please select a campaign and enter code');
-            return;
-        }
+        showMessage('Please sign the message in your wallet...');
+        const sig = await signEIP712(domain, types, value);
 
-        if (!currentProof) {
-            showError('Please load proof from storage first');
-            return;
-        }
-
-        const proof = generateProofForCode(issuanceId, code);
-        if (!proof) {
-            showError('Code not found in stored proofs for this issuance');
-            return;
-        }
-
-        const claimer = await signer.getAddress();
-
-        // Get DOMAIN_SEPARATOR and TYPEHASH
+        // Get debug info
         let domainSeparator, typeHash;
         try {
             domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
             typeHash = await selectedCommunityToken.CLAIM_WITH_AUTHORIZATION_TYPEHASH();
         } catch (e) {
-            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
+            domainSeparator = 'N/A';
             typeHash = DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH;
         }
 
-        const now = Math.floor(Date.now() / 1000);
-        const validAfter = now - 60;
-        const validBefore = now + 3600;
-        const nonce = ethers.hexlify(ethers.randomBytes(32));
-
-        const tokenAddress = await selectedCommunityToken.getAddress();
-        const tokenName = await selectedCommunityToken.name();
-        const chainId = (await provider.getNetwork()).chainId;
-        
-        const domain = {
-            name: tokenName,
-            version: "1",
-            chainId: chainId,
-            verifyingContract: tokenAddress
-        };
-        
-        const types = {
-            ClaimWithAuthorization: [
-                { name: "claimer", type: "address" },
-                { name: "issuanceId", type: "string" },
-                { name: "code", type: "string" },
-                { name: "validAfter", type: "uint256" },
-                { name: "validBefore", type: "uint256" },
-                { name: "nonce", type: "bytes32" }
-            ]
-        };
-        
-        const value = {
-            claimer: claimer,
-            issuanceId: issuanceId,
-            code: code,
-            validAfter: validAfter,
-            validBefore: validBefore,
-            nonce: nonce
-        };
-
-        showMessage('Please sign the message in your wallet...');
-        const signature = await signer.signTypedData(domain, types, value);
-        const sig = ethers.Signature.from(signature);
-
-        // Output signature data as JSON
         const signatureData = {
-            tokenAddress: tokenAddress,
+            tokenAddress,
             signature: {
-                message: {
-                    claimer: claimer,
-                    issuanceId: issuanceId,
-                    code: code,
-                    proof: proof,
-                    validAfter: validAfter,
-                    validBefore: validBefore,
-                    nonce: nonce
-                },
+                message: { claimer, issuanceId, code, proof, validAfter, validBefore, nonce },
                 r: sig.r,
                 s: sig.s,
                 v: "0x" + sig.v.toString(16)
             },
-            debug: {
-                domainSeparator: domainSeparator,
-                typeHash: typeHash,
-                domain: domain,
-                types: types,
-                value: value
-            }
+            debug: { domainSeparator, typeHash, domain, types, value }
         };
 
         console.log('Generated Signature Data:', JSON.stringify(signatureData, null, 2));
         
-        // Show in UI
         const jsonOutput = JSON.stringify(signatureData, null, 2);
         showSuccess(`Signature generated! Check console for details.\n\n<pre style="text-align:left;font-size:10px;max-height:200px;overflow:auto;">${jsonOutput}</pre>`);
 
