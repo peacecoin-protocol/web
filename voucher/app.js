@@ -133,6 +133,72 @@ async function getLeaves(ipfsCid) {
     return await fetchLeavesFromIPFS(ipfsCid);
 }
 
+// Polygon Mainnet chain ID
+const POLYGON_CHAIN_ID = 137n;
+const POLYGON_CHAIN_ID_HEX = '0x89';
+
+async function ensurePolygonNetwork() {
+    const network = await provider.getNetwork();
+    if (network.chainId !== POLYGON_CHAIN_ID) {
+        const currentChainId = Number(network.chainId);
+        const networkNames = {
+            1: 'Ethereum Mainnet',
+            5: 'Goerli',
+            11155111: 'Sepolia',
+            56: 'BNB Chain',
+            42161: 'Arbitrum One',
+            10: 'Optimism'
+        };
+        const currentNetworkName = networkNames[currentChainId] || `Chain ID: ${currentChainId}`;
+        
+        showError(`⚠️ Wrong network! You are connected to ${currentNetworkName}. This app requires Polygon Mainnet.`);
+        showMessage('Requesting switch to Polygon network...');
+        
+        try {
+            await window.ethereum.request({
+                method: 'wallet_switchEthereumChain',
+                params: [{ chainId: POLYGON_CHAIN_ID_HEX }]
+            });
+            // Reinitialize provider after network switch
+            provider = new ethers.BrowserProvider(window.ethereum);
+            signer = await provider.getSigner();
+            showSuccess('✓ Connected to Polygon Mainnet');
+            return true;
+        } catch (switchError) {
+            // If Polygon is not added, add it
+            if (switchError.code === 4902) {
+                try {
+                    await window.ethereum.request({
+                        method: 'wallet_addEthereumChain',
+                        params: [{
+                            chainId: POLYGON_CHAIN_ID_HEX,
+                            chainName: 'Polygon Mainnet',
+                            nativeCurrency: { name: 'MATIC', symbol: 'MATIC', decimals: 18 },
+                            rpcUrls: ['https://polygon-rpc.com'],
+                            blockExplorerUrls: ['https://polygonscan.com']
+                        }]
+                    });
+                    provider = new ethers.BrowserProvider(window.ethereum);
+                    signer = await provider.getSigner();
+                    showSuccess('✓ Connected to Polygon Mainnet');
+                    return true;
+                } catch (addError) {
+                    showError('❌ Failed to add Polygon network: ' + addError.message);
+                    return false;
+                }
+            }
+            // User rejected the switch
+            if (switchError.code === 4001) {
+                showError(`❌ Network switch rejected. Please switch to Polygon Mainnet manually to use this app. (Current: ${currentNetworkName})`);
+            } else {
+                showError(`❌ Failed to switch network: ${switchError.message}`);
+            }
+            return false;
+        }
+    }
+    return true;
+}
+
 async function connectWallet() {
     try {
         if (typeof window.ethereum === 'undefined') {
@@ -143,6 +209,12 @@ async function connectWallet() {
         await window.ethereum.request({ method: 'eth_requestAccounts' });
         provider = new ethers.BrowserProvider(window.ethereum);
         signer = await provider.getSigner();
+
+        // Ensure connected to Polygon
+        const isPolygon = await ensurePolygonNetwork();
+        if (!isPolygon) {
+            return;
+        }
 
         const address = await signer.getAddress();
         document.getElementById('wallet-address').textContent = address.substring(0, 6) + '...' + address.substring(38);
@@ -161,8 +233,9 @@ async function connectWallet() {
         // Load community tokens
         await loadCommunityTokens();
 
-        // Listen for account changes
+        // Listen for account and chain changes
         window.ethereum.on('accountsChanged', connectWallet);
+        window.ethereum.on('chainChanged', () => window.location.reload());
 
     } catch (error) {
         showError('Failed to connect wallet: ' + error.message);
