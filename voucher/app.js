@@ -791,6 +791,17 @@ async function onCampaignSelected() {
     document.getElementById('detail-amount').textContent = ethers.formatUnits(issuanceData.amountPerClaim, issuanceData.decimals);
     document.getElementById('detail-status').textContent = status;
     document.getElementById('detail-period').textContent = `${formatDate(startTime)} - ${formatDate(endTime)}`;
+    
+    // Display IPFS CID with link
+    const cidElement = document.getElementById('detail-ipfs-cid');
+    if (issuanceData.ipfsCid) {
+        const shortCid = issuanceData.ipfsCid.length > 20 
+            ? issuanceData.ipfsCid.substring(0, 20) + '...' 
+            : issuanceData.ipfsCid;
+        cidElement.innerHTML = `<a href="https://gateway.pinata.cloud/ipfs/${issuanceData.ipfsCid}" target="_blank" rel="noopener">${shortCid}</a>`;
+    } else {
+        cidElement.textContent = 'Not available';
+    }
 
     detailsDiv.style.display = 'block';
 
@@ -1197,7 +1208,7 @@ async function onManageCampaignSelected() {
 
     document.getElementById('manage-detail-name').textContent = issuanceData.name;
     document.getElementById('manage-detail-status').textContent = status;
-    document.getElementById('manage-detail-amount').textContent = ethers.formatUnits(issuanceData.claimAmountPerCode, issuanceData.decimals);
+    document.getElementById('manage-detail-amount').textContent = ethers.formatUnits(issuanceData.amountPerClaim, issuanceData.decimals);
 
     // Display funds info from cached data
     const remainingAmount = BigInt(issuanceData.remainingAmount);
@@ -1207,6 +1218,17 @@ async function onManageCampaignSelected() {
     document.getElementById('manage-detail-initial-funds').textContent = ethers.formatUnits(initialFunds, issuanceData.decimals);
     document.getElementById('manage-detail-remaining-funds').textContent = ethers.formatUnits(remainingAmount, issuanceData.decimals);
     document.getElementById('manage-detail-claimed-amount').textContent = ethers.formatUnits(claimedAmount, issuanceData.decimals);
+
+    // Display IPFS CID with link
+    const cidElement = document.getElementById('manage-detail-ipfs-cid');
+    if (issuanceData.ipfsCid) {
+        const shortCid = issuanceData.ipfsCid.length > 20 
+            ? issuanceData.ipfsCid.substring(0, 20) + '...' 
+            : issuanceData.ipfsCid;
+        cidElement.innerHTML = `<a href="https://gateway.pinata.cloud/ipfs/${issuanceData.ipfsCid}" target="_blank" rel="noopener">${shortCid}</a>`;
+    } else {
+        cidElement.textContent = 'Not available';
+    }
 
     detailsDiv.style.display = 'block';
 }
