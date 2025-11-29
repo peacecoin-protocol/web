@@ -121,7 +121,7 @@ event VoucherClaimed(
 
 ### 2-2. claimVoucherWithAuthorization
 
-メタトランザクション機能を使用してバウチャーコードでトークンをクレームします。署名を使用することで、ガス代を別のアドレス（リレイヤー）が負担できます。
+メタトランザクション機能を使用してバウチャーコードでトークンをクレームします。EIP-712署名を使用することで、ガス代を別のアドレス（リレイヤー）が負担できます。
 
 ```solidity
 function claimVoucherWithAuthorization(
@@ -148,7 +148,11 @@ function claimVoucherWithAuthorization(
 - `nonce`: 一度だけ使用可能な一意の値（同じnonceは再利用不可）
 - `v`, `r`, `s`: ECDSA署名のパラメータ
 
-**使用例**:
+#### EIP-712署名方式（推奨）
+
+MetaMask等のウォレットで`eth_signTypedData_v4`を使用する方式です。
+
+**使用例（ethers.js v6）**:
 ```javascript
 const claimer = await signer.getAddress();
 const code = "CODE-1234";
@@ -157,42 +161,50 @@ const issuanceId = "voucher_1234567890_abc";
 
 // 署名の有効期間を設定（例: 現在から1時間後まで有効）
 const now = Math.floor(Date.now() / 1000);
-const validAfter = now;
+const validAfter = now - 60; // 1分前（クロックスキュー対策）
 const validBefore = now + 3600; // 1時間後
 
-// 一意のnonceを生成（例: ランダムなbytes32）
-const nonce = ethers.randomBytes(32);
+// 一意のnonceを生成（ランダムなbytes32）
+const nonce = ethers.hexlify(ethers.randomBytes(32));
 
-// DOMAIN_SEPARATORを取得
-const domainSeparator = await communityToken.DOMAIN_SEPARATOR();
+// トークン情報を取得
+const tokenAddress = await communityToken.getAddress();
+const tokenName = await communityToken.name();
+const chainId = (await provider.getNetwork()).chainId;
 
-// 署名データを準備
-const CLAIM_WITH_AUTHORIZATION_TYPEHASH = "0x7e6c8f6b45c0f4e8c8c0e6c7c8b9a0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7";
-const data = ethers.AbiCoder.defaultAbiCoder().encode(
-    ["bytes32", "address", "bytes32", "bytes32", "uint256", "uint256", "bytes32"],
-    [
-        CLAIM_WITH_AUTHORIZATION_TYPEHASH,
-        claimer,
-        ethers.keccak256(ethers.toUtf8Bytes(issuanceId)),
-        ethers.keccak256(ethers.toUtf8Bytes(code)),
-        validAfter,
-        validBefore,
-        nonce
+// EIP-712 ドメイン定義
+const domain = {
+    name: tokenName,
+    version: "1",
+    chainId: chainId,
+    verifyingContract: tokenAddress
+};
+
+// EIP-712 型定義
+const types = {
+    ClaimWithAuthorization: [
+        { name: "claimer", type: "address" },
+        { name: "issuanceId", type: "string" },
+        { name: "code", type: "string" },
+        { name: "validAfter", type: "uint256" },
+        { name: "validBefore", type: "uint256" },
+        { name: "nonce", type: "bytes32" }
     ]
-);
+};
 
-// EIP-712形式でダイジェストを作成
-const dataHash = ethers.keccak256(data);
-const digest = ethers.keccak256(
-    ethers.concat([
-        "0x1901",
-        domainSeparator,
-        dataHash
-    ])
-);
+// 署名対象の値
+const value = {
+    claimer: claimer,
+    issuanceId: issuanceId,
+    code: code,
+    validAfter: validAfter,
+    validBefore: validBefore,
+    nonce: nonce
+};
 
-// 署名を作成（ハッシュを直接署名する必要があるため、signingKeyを使用）
-const sig = signer.signingKey.sign(digest);
+// EIP-712署名を作成（ウォレットがeth_signTypedData_v4を呼び出す）
+const signature = await signer.signTypedData(domain, types, value);
+const sig = ethers.Signature.from(signature);
 
 // claimVoucherWithAuthorizationを呼び出し（リレイヤーが実行）
 await communityToken.claimVoucherWithAuthorization(
@@ -209,19 +221,57 @@ await communityToken.claimVoucherWithAuthorization(
 );
 ```
 
+#### 署名データをJSON形式で出力（リレイヤー連携用）
+
+```javascript
+const signatureData = {
+    tokenAddress: tokenAddress,
+    signature: {
+        message: {
+            claimer: claimer,
+            issuanceId: issuanceId,
+            code: code,
+            proof: proof,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        },
+        r: sig.r,
+        s: sig.s,
+        v: "0x" + sig.v.toString(16)
+    }
+};
+console.log(JSON.stringify(signatureData, null, 2));
+```
+
 **検証ロジック**:
 1. `claimVoucher`と同じ検証（キャンペーン有効性、時刻範囲、クレーム上限など）
-2. `validAfter`より後であること
-3. `validBefore`より前であること
+2. `validAfter`より後であること（`block.timestamp > validAfter`）
+3. `validBefore`より前であること（`block.timestamp < validBefore`）
 4. `nonce`が未使用であること
-5. 署名が`claimer`のものであること
+5. 署名が`claimer`のものであること（EIP-712形式で検証）
 6. クレーム金額がメタトランザクション手数料より大きいこと
 
 **メタトランザクション手数料**:
 - クレーム金額から自動的にメタトランザクション手数料が差し引かれます
-- 手数料は`_msgSender()`（リレイヤー）に支払われます
+- 手数料は`msg.sender`（リレイヤー）に支払われます
 - 残りの金額が`claimer`に転送されます
 - 手数料は`getMetaTransactionFee()`で確認できます
+
+**コントラクト側の署名検証ロジック**:
+```solidity
+bytes memory data = abi.encode(
+    CLAIM_WITH_AUTHORIZATION_TYPEHASH,
+    claimer,
+    keccak256(bytes(issuanceId)),  // EIP-712: 文字列はkeccak256でハッシュ化
+    keccak256(bytes(code)),         // EIP-712: 文字列はkeccak256でハッシュ化
+    validAfter,
+    validBefore,
+    nonce
+);
+bytes32 digest = keccak256(abi.encodePacked("\x19\x01", DOMAIN_SEPARATOR(), keccak256(data)));
+require(ecrecover(digest, v, r, s) == claimer, "Invalid signature");
+```
 
 **イベント**:
 ```solidity
@@ -250,6 +300,7 @@ event MetaTransactionFeeCollected(
 - 署名の有効期間（`validAfter`〜`validBefore`）を適切に設定してください
 - クレーム金額はメタトランザクション手数料より大きい必要があります
 - リレイヤーは任意のアドレスで、ガス代を負担します
+- EIP-712のドメイン定義（name, version, chainId, verifyingContract）はコントラクトと一致させる必要があります
 
 ---
 

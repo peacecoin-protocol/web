@@ -42,6 +42,7 @@ const VOUCHER_ABI = [
     ...ERC20_ABI,
     "function registerVoucherIssuance(string issuanceId, string _name, uint256 _amountPerClaim, uint256 _countLimitPerUser, uint256 _totalAmountLimit, uint256 _initialFunds, uint256 _startTime, uint256 _endTime, bytes32 _merkleRoot)",
     "function claimVoucher(string issuanceId, string code, bytes32[] proof)",
+    "function claimVoucherWithAuthorization(address claimer, string issuanceId, string code, bytes32[] proof, uint256 validAfter, uint256 validBefore, bytes32 nonce, uint8 v, bytes32 r, bytes32 s)",
     "function canClaimVoucher(string issuanceId, string code, bytes32[] proof, address claimer) view returns (bool, uint8)",
     "function getVoucherIssuanceInfo(string issuanceId) view returns (tuple(string issuanceId, address owner, string name, uint256 amountPerClaim, uint256 countLimitPerUser, uint256 totalAmountLimit, uint256 startTime, uint256 endTime, bytes32 merkleRoot, bool isActive, uint256 remainingAmount, uint256 claimedAmount, uint256 claimedDisplayAmount, uint256 totalClaimCount))",
     "function getVoucherIssuanceIds() view returns (string[])",
@@ -49,8 +50,13 @@ const VOUCHER_ABI = [
     "function withdrawVoucherFunds(string issuanceId, uint256 amount)",
     "function terminateVoucherIssuance(string issuanceId)",
     "function getMetaTransactionFee() view returns (uint256)",
+    "function DOMAIN_SEPARATOR() view returns (bytes32)",
+    "function CLAIM_WITH_AUTHORIZATION_TYPEHASH() view returns (bytes32)",
     "function owner() view returns (address)"
 ];
+
+// Default TYPEHASH (can be fetched from contract)
+const DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH = "0x7e6c8f6b45c0f4e8c8c0e6c7c8b9a0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7";
 
 let provider, signer, pceToken, selectedCommunityToken;
 let currentProof = null;
@@ -810,6 +816,278 @@ async function claimVoucher() {
     }
 }
 
+async function claimVoucherWithAuthorization() {
+    try {
+        if (!selectedCommunityToken) {
+            showError('Please select a community token first');
+            return;
+        }
+
+        const issuanceId = document.getElementById('claim-issuance-select').value;
+        const code = document.getElementById('claim-code').value;
+
+        if (!issuanceId || !code) {
+            showError('Please select a campaign and enter code');
+            return;
+        }
+
+        if (!currentProof) {
+            showError('Please load proof from storage first');
+            return;
+        }
+
+        // Generate Merkle proof for this code
+        const proof = generateProofForCode(issuanceId, code);
+
+        if (!proof) {
+            showError('Code not found in stored proofs for this issuance');
+            return;
+        }
+
+        const claimer = await signer.getAddress();
+
+        // Pre-check if claim is possible using canClaimVoucher
+        showMessage('Checking if claim is possible...');
+        const [canClaim, errorCode] = await selectedCommunityToken.canClaimVoucher(
+            issuanceId,
+            code,
+            proof,
+            claimer
+        );
+
+        if (!canClaim) {
+            const errorMessages = {
+                1: 'Issuance not found',
+                2: 'Issuance is not active',
+                3: 'Campaign has not started yet',
+                4: 'Campaign has already ended',
+                5: 'You have reached your claim limit for this campaign',
+                6: 'Insufficient funds in the campaign',
+                7: 'Maximum total claim amount would be exceeded',
+                8: 'Invalid Merkle proof (code verification failed)',
+                9: 'This code has already been used'
+            };
+            const errorMessage = errorMessages[errorCode] || `Unknown error (code: ${errorCode})`;
+            showError(`Cannot claim: ${errorMessage}`);
+            return;
+        }
+
+        showMessage('Generating signature for meta-transaction...');
+
+        // Get DOMAIN_SEPARATOR and TYPEHASH from contract
+        let domainSeparator, typeHash;
+        try {
+            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
+            typeHash = await selectedCommunityToken.CLAIM_WITH_AUTHORIZATION_TYPEHASH();
+        } catch (e) {
+            console.warn('Failed to fetch TYPEHASH from contract, using default:', e);
+            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
+            typeHash = DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH;
+        }
+
+        // Set validity window (valid from now for 1 hour)
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = now - 60; // 1 minute ago (to account for clock skew)
+        const validBefore = now + 3600; // 1 hour from now
+
+        // Generate random nonce
+        const nonce = ethers.hexlify(ethers.randomBytes(32));
+
+        // Use EIP-712 typed data signing
+        showMessage('Please sign the message in your wallet...');
+        
+        const tokenAddress = await selectedCommunityToken.getAddress();
+        const tokenName = await selectedCommunityToken.name();
+        const chainId = (await provider.getNetwork()).chainId;
+        
+        const domain = {
+            name: tokenName,
+            version: "1",
+            chainId: chainId,
+            verifyingContract: tokenAddress
+        };
+        
+        const types = {
+            ClaimWithAuthorization: [
+                { name: "claimer", type: "address" },
+                { name: "issuanceId", type: "string" },
+                { name: "code", type: "string" },
+                { name: "validAfter", type: "uint256" },
+                { name: "validBefore", type: "uint256" },
+                { name: "nonce", type: "bytes32" }
+            ]
+        };
+        
+        const value = {
+            claimer: claimer,
+            issuanceId: issuanceId,
+            code: code,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        };
+        
+        console.log('=== EIP-712 Signature Debug ===');
+        console.log('Domain:', domain);
+        console.log('Types:', types);
+        console.log('Value:', value);
+        console.log('DOMAIN_SEPARATOR from contract:', domainSeparator);
+        console.log('TYPEHASH from contract:', typeHash);
+        
+        const signature = await signer.signTypedData(domain, types, value);
+        const sig = ethers.Signature.from(signature);
+        
+        console.log('Signature:', signature);
+        console.log('v:', sig.v);
+        console.log('r:', sig.r);
+        console.log('s:', sig.s);
+
+        showMessage('Claiming voucher with authorization...');
+
+        // Call claimVoucherWithAuthorization
+        const tx = await selectedCommunityToken.claimVoucherWithAuthorization(
+            claimer,
+            issuanceId,
+            code,
+            proof,
+            validAfter,
+            validBefore,
+            nonce,
+            sig.v,
+            sig.r,
+            sig.s
+        );
+        await tx.wait();
+
+        // Update selected token balance
+        await onCommunityTokenSelected();
+        showSuccess('Voucher claimed with authorization successfully!');
+
+        document.getElementById('claim-code').value = '';
+
+    } catch (error) {
+        console.error('Claim with authorization failed:', error);
+        showError('Claim with authorization failed: ' + error.message);
+    }
+}
+
+// Generate signature data for external use (e.g., relayer)
+async function generateClaimSignature() {
+    try {
+        if (!selectedCommunityToken) {
+            showError('Please select a community token first');
+            return;
+        }
+
+        const issuanceId = document.getElementById('claim-issuance-select').value;
+        const code = document.getElementById('claim-code').value;
+
+        if (!issuanceId || !code) {
+            showError('Please select a campaign and enter code');
+            return;
+        }
+
+        if (!currentProof) {
+            showError('Please load proof from storage first');
+            return;
+        }
+
+        const proof = generateProofForCode(issuanceId, code);
+        if (!proof) {
+            showError('Code not found in stored proofs for this issuance');
+            return;
+        }
+
+        const claimer = await signer.getAddress();
+
+        // Get DOMAIN_SEPARATOR and TYPEHASH
+        let domainSeparator, typeHash;
+        try {
+            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
+            typeHash = await selectedCommunityToken.CLAIM_WITH_AUTHORIZATION_TYPEHASH();
+        } catch (e) {
+            domainSeparator = await selectedCommunityToken.DOMAIN_SEPARATOR();
+            typeHash = DEFAULT_CLAIM_WITH_AUTHORIZATION_TYPEHASH;
+        }
+
+        const now = Math.floor(Date.now() / 1000);
+        const validAfter = now - 60;
+        const validBefore = now + 3600;
+        const nonce = ethers.hexlify(ethers.randomBytes(32));
+
+        const tokenAddress = await selectedCommunityToken.getAddress();
+        const tokenName = await selectedCommunityToken.name();
+        const chainId = (await provider.getNetwork()).chainId;
+        
+        const domain = {
+            name: tokenName,
+            version: "1",
+            chainId: chainId,
+            verifyingContract: tokenAddress
+        };
+        
+        const types = {
+            ClaimWithAuthorization: [
+                { name: "claimer", type: "address" },
+                { name: "issuanceId", type: "string" },
+                { name: "code", type: "string" },
+                { name: "validAfter", type: "uint256" },
+                { name: "validBefore", type: "uint256" },
+                { name: "nonce", type: "bytes32" }
+            ]
+        };
+        
+        const value = {
+            claimer: claimer,
+            issuanceId: issuanceId,
+            code: code,
+            validAfter: validAfter,
+            validBefore: validBefore,
+            nonce: nonce
+        };
+
+        showMessage('Please sign the message in your wallet...');
+        const signature = await signer.signTypedData(domain, types, value);
+        const sig = ethers.Signature.from(signature);
+
+        // Output signature data as JSON
+        const signatureData = {
+            tokenAddress: tokenAddress,
+            signature: {
+                message: {
+                    claimer: claimer,
+                    issuanceId: issuanceId,
+                    code: code,
+                    proof: proof,
+                    validAfter: validAfter,
+                    validBefore: validBefore,
+                    nonce: nonce
+                },
+                r: sig.r,
+                s: sig.s,
+                v: "0x" + sig.v.toString(16)
+            },
+            debug: {
+                domainSeparator: domainSeparator,
+                typeHash: typeHash,
+                domain: domain,
+                types: types,
+                value: value
+            }
+        };
+
+        console.log('Generated Signature Data:', JSON.stringify(signatureData, null, 2));
+        
+        // Show in UI
+        const jsonOutput = JSON.stringify(signatureData, null, 2);
+        showSuccess(`Signature generated! Check console for details.\n\n<pre style="text-align:left;font-size:10px;max-height:200px;overflow:auto;">${jsonOutput}</pre>`);
+
+    } catch (error) {
+        console.error('Failed to generate signature:', error);
+        showError('Failed to generate signature: ' + error.message);
+    }
+}
+
 function generateProofForCode(issuanceId, code) {
     const storedData = localStorage.getItem(STORAGE_PREFIX + issuanceId);
     if (!storedData) return null;
@@ -1211,8 +1489,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('claim-issuance-select').addEventListener('change', onCampaignSelected);
     document.getElementById('refresh-campaigns-button').addEventListener('click', loadCampaigns);
 
-    // Claim button
+    // Claim buttons
     document.getElementById('claim-button').addEventListener('click', claimVoucher);
+    document.getElementById('claim-with-auth-button').addEventListener('click', claimVoucherWithAuthorization);
+    document.getElementById('generate-signature-button').addEventListener('click', generateClaimSignature);
 
     // Manage funds tab
     document.getElementById('manage-issuance-select').addEventListener('change', onManageCampaignSelected);
