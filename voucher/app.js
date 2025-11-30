@@ -50,6 +50,7 @@ const VOUCHER_ABI = [
     "function withdrawVoucherFunds(string issuanceId, uint256 amount)",
     "function terminateVoucherIssuance(string issuanceId)",
     "function getMetaTransactionFee() view returns (uint256)",
+    "function getMetaTransactionFeeWithBaseFee(uint256 _baseFee) view returns (uint256)",
     "function DOMAIN_SEPARATOR() view returns (bytes32)",
     "function CLAIM_WITH_AUTHORIZATION_TYPEHASH() view returns (bytes32)",
     "function owner() view returns (address)"
@@ -150,10 +151,10 @@ async function ensurePolygonNetwork() {
             10: 'Optimism'
         };
         const currentNetworkName = networkNames[currentChainId] || `Chain ID: ${currentChainId}`;
-        
+
         showError(`⚠️ Wrong network! You are connected to ${currentNetworkName}. This app requires Polygon Mainnet.`);
         showMessage('Requesting switch to Polygon network...');
-        
+
         try {
             await window.ethereum.request({
                 method: 'wallet_switchEthereumChain',
@@ -349,6 +350,12 @@ async function updateBalance() {
     }
 }
 
+async function getMetaFee(token) {
+    const block = await provider.getBlock('latest');
+    const baseFee = block?.baseFeePerGas || 0n;
+    return token.getMetaTransactionFeeWithBaseFee(baseFee);
+}
+
 async function calculateInitialFunds() {
     try {
         if (!selectedCommunityToken) return;
@@ -361,8 +368,7 @@ async function calculateInitialFunds() {
             return;
         }
 
-        // Get meta transaction fee
-        const metaFee = await selectedCommunityToken.getMetaTransactionFee();
+        const metaFee = await getMetaFee(selectedCommunityToken);
         const decimals = await selectedCommunityToken.decimals();
         const metaFeeFormatted = parseFloat(ethers.formatUnits(metaFee, decimals));
 
@@ -433,7 +439,8 @@ async function onCommunityTokenSelected() {
         const address = await signer.getAddress();
         const balance = await selectedCommunityToken.balanceOf(address);
         const decimals = await selectedCommunityToken.decimals();
-        const metaFee = await selectedCommunityToken.getMetaTransactionFee();
+
+        const metaFee = await getMetaFee(selectedCommunityToken);
 
         // Update UI
         document.getElementById('selected-token-name').textContent = name;
@@ -864,12 +871,12 @@ async function onCampaignSelected() {
     document.getElementById('detail-amount').textContent = ethers.formatUnits(issuanceData.amountPerClaim, issuanceData.decimals);
     document.getElementById('detail-status').textContent = status;
     document.getElementById('detail-period').textContent = `${formatDate(startTime)} - ${formatDate(endTime)}`;
-    
+
     // Display IPFS CID with link
     const cidElement = document.getElementById('detail-ipfs-cid');
     if (issuanceData.ipfsCid) {
-        const shortCid = issuanceData.ipfsCid.length > 20 
-            ? issuanceData.ipfsCid.substring(0, 20) + '...' 
+        const shortCid = issuanceData.ipfsCid.length > 20
+            ? issuanceData.ipfsCid.substring(0, 20) + '...'
             : issuanceData.ipfsCid;
         cidElement.innerHTML = `<a href="https://gateway.pinata.cloud/ipfs/${issuanceData.ipfsCid}" target="_blank" rel="noopener">${shortCid}</a>`;
     } else {
@@ -942,6 +949,22 @@ async function prepareClaimData(skipCanClaimCheck = false) {
 
     if (!issuanceId || !code) {
         throw new Error('Please select a campaign and enter code');
+    }
+
+    // If proof is not loaded yet, wait for it (up to 10 seconds)
+    if (!currentProof) {
+        const select = document.getElementById('claim-issuance-select');
+        const option = select.options[select.selectedIndex];
+        if (option && option.dataset.issuance) {
+            const issuanceData = JSON.parse(option.dataset.issuance);
+            if (issuanceData.ipfsCid) {
+                showMessage('Waiting for proof data to load from IPFS...');
+                for (let i = 0; i < 20; i++) { // Wait max 10 seconds
+                    if (currentProof) break;
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                }
+            }
+        }
     }
 
     if (!currentProof) {
@@ -1020,6 +1043,15 @@ async function claimVoucherWithAuthorization() {
         const { domain, types, value, validAfter, validBefore, nonce } =
             await prepareEIP712SignatureData(claimer, issuanceId, code);
 
+        // Check if claim amount > meta transaction fee
+        const estimatedFee = await getMetaFee(selectedCommunityToken);
+        const issuance = await selectedCommunityToken.getVoucherIssuanceInfo(issuanceId);
+        if (estimatedFee >= issuance.amountPerClaim) {
+            const decimals = await selectedCommunityToken.decimals();
+            showError(`⚠️ Fee (${ethers.formatUnits(estimatedFee, decimals)}) >= Claim amount (${ethers.formatUnits(issuance.amountPerClaim, decimals)}). Transaction will fail.`);
+            return;
+        }
+
         console.log('=== EIP-712 Signature Debug ===');
         console.log('Domain:', domain);
         console.log('Types:', types);
@@ -1031,6 +1063,7 @@ async function claimVoucherWithAuthorization() {
         console.log('v:', sig.v, 'r:', sig.r, 's:', sig.s);
 
         showMessage('Claiming voucher with authorization...');
+
         const tx = await selectedCommunityToken.claimVoucherWithAuthorization(
             claimer, issuanceId, code, proof,
             validAfter, validBefore, nonce,
@@ -1295,8 +1328,8 @@ async function onManageCampaignSelected() {
     // Display IPFS CID with link
     const cidElement = document.getElementById('manage-detail-ipfs-cid');
     if (issuanceData.ipfsCid) {
-        const shortCid = issuanceData.ipfsCid.length > 20 
-            ? issuanceData.ipfsCid.substring(0, 20) + '...' 
+        const shortCid = issuanceData.ipfsCid.length > 20
+            ? issuanceData.ipfsCid.substring(0, 20) + '...'
             : issuanceData.ipfsCid;
         cidElement.innerHTML = `<a href="https://gateway.pinata.cloud/ipfs/${issuanceData.ipfsCid}" target="_blank" rel="noopener">${shortCid}</a>`;
     } else {
