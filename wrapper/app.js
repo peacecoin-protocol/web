@@ -50,6 +50,14 @@ async function connectWallet() {
 
         await window.ethereum.request({ method: 'eth_requestAccounts' });
         provider = new ethers.BrowserProvider(window.ethereum);
+
+        // Verify connected to Ethereum mainnet (chainId 1)
+        const network = await provider.getNetwork();
+        if (network.chainId !== 1n) {
+            showError('Please switch MetaMask to Ethereum Mainnet (chainId 1)');
+            return;
+        }
+
         signer = await provider.getSigner();
 
         const address = await signer.getAddress();
@@ -67,8 +75,9 @@ async function connectWallet() {
         // Load balances
         await updateBalances();
 
-        // Listen for account changes
+        // Listen for account/chain changes
         window.ethereum.on('accountsChanged', connectWallet);
+        window.ethereum.on('chainChanged', () => window.location.reload());
 
     } catch (error) {
         showError('Failed to connect wallet: ' + error.message);
@@ -80,10 +89,11 @@ async function updateBalances() {
         const address = await signer.getAddress();
         const pceBalance = await pceToken.balanceOf(address);
         const wpceBalance = await wpceToken.balanceOf(address);
-        const decimals = await pceToken.decimals();
+        const pceDecimals = await pceToken.decimals();
+        const wpceDecimals = await wpceToken.decimals();
 
-        document.getElementById('pce-balance').textContent = ethers.formatUnits(pceBalance, decimals);
-        document.getElementById('wpce-balance').textContent = ethers.formatUnits(wpceBalance, decimals);
+        document.getElementById('pce-balance').textContent = ethers.formatUnits(pceBalance, pceDecimals);
+        document.getElementById('wpce-balance').textContent = ethers.formatUnits(wpceBalance, wpceDecimals);
     } catch (error) {
         console.error('Failed to update balances:', error);
     }
