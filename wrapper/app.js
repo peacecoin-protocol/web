@@ -51,11 +51,19 @@ async function connectWallet() {
         await window.ethereum.request({ method: 'eth_requestAccounts' });
         provider = new ethers.BrowserProvider(window.ethereum);
 
-        // Verify connected to Ethereum mainnet (chainId 1)
+        // Ensure connected to Ethereum mainnet (chainId 1)
         const network = await provider.getNetwork();
         if (network.chainId !== 1n) {
-            showError('Please switch MetaMask to Ethereum Mainnet (chainId 1)');
-            return;
+            try {
+                await window.ethereum.request({
+                    method: 'wallet_switchEthereumChain',
+                    params: [{ chainId: '0x1' }],
+                });
+                provider = new ethers.BrowserProvider(window.ethereum);
+            } catch (switchError) {
+                showError('Please switch to Ethereum Mainnet to use this app');
+                return;
+            }
         }
 
         signer = await provider.getSigner();
