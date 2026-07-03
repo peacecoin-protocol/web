@@ -518,11 +518,23 @@ function renderRepresentativeCharts() {
         });
     }
 
-    // daily relayer-fee outflow from the reserve (meta-tx fees)
+    // relayer-fee outflow from the reserve (meta-tx fees): daily + cumulative
     const hasFees = r.feePce.some((v) => v > 0);
     $('chartFeeOut').closest('.chart-card').hidden = !hasFees;
+    $('chartFeeCum').closest('.chart-card').hidden = !hasFees;
     if (hasFees) {
         dailyBarChart('chartFeeOut', 'seriesFeeOut', r.feePce, COLOR_DECAY);
+        let feeSum = 0;
+        makeChart('chartFeeCum', {
+            type: 'line',
+            data: {
+                labels: r.day,
+                datasets: [
+                    line(t(lang, 'seriesFeeCum'), r.feePce.map((v) => (feeSum += v)), COLOR_DECAY),
+                ],
+            },
+            options: baseOptions(false),
+        });
     }
 
     // explorer-style daily activity: sent-or-received / senders / receivers
