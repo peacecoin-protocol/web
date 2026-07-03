@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PCEコミュニティシミュレーター - PEACE COIN</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="layout">
+    <aside class="sidebar" id="sidebar">
+        <nav class="toc" id="toc" hidden></nav>
+        <div class="estimate-bar" id="estimateBar"></div>
+        <button type="button" id="runBtn" data-i18n="run">Run Simulation</button>
+        <div class="progress-wrap" id="progressWrap" hidden><div class="progress-bar" id="progressBar"></div></div>
+    </aside>
+    <div class="container">
+        <div class="lang-toggle">
+            <button type="button" class="lang-btn" id="langEn">EN</button>
+            <button type="button" class="lang-btn" id="langJa">日本語</button>
+        </div>
+        <h1 data-i18n="title">PCE Community Simulator</h1>
+        <p class="subtitle" data-i18n="subtitle">Simulation of ARIGATO CREATION increase and decay of a PCE community token. Runs entirely in your browser.</p>
+
+        <div class="settings-io">
+            <button type="button" class="io-btn" id="exportBtn" data-i18n="exportSettings">Export settings</button>
+            <button type="button" class="io-btn" id="importBtn" data-i18n="importSettings">Import settings</button>
+            <input type="file" id="importFile" accept="application/json,.json" hidden>
+        </div>
+
+
+
+        <details open class="param-group" id="sec-token">
+            <summary><span data-i18n="tokenSettings">Token Settings</span><button type="button" class="help-btn" data-help="helpToken" aria-label="Help">?</button></summary>
+            <div class="help-panel" data-help-panel="helpToken" hidden></div>
+            <div class="grid-2">
+                <div class="input-group">
+                    <label for="initialSupply"><span data-i18n="initialSupply">Initial Total Supply</span><button type="button" class="help-btn" data-help="help_initialSupply" aria-label="Help">?</button></label>
+                    <input type="number" id="initialSupply" value="1000000" min="1000" max="1000000000" step="1000">
+                    <div class="help-panel" data-help-panel="help_initialSupply" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="decreaseIntervalDays"><span data-i18n="decreaseIntervalDays">Decrease Interval</span><button type="button" class="help-btn" data-help="help_decreaseIntervalDays" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="decreaseIntervalDays" value="7" min="0" step="1">
+                        <span class="unit-suffix" data-i18n="unitDays"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_decreaseIntervalDays" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="decayRatePct"><span data-i18n="decayRatePct">Decay Rate</span><button type="button" class="help-btn" data-help="help_decayRatePct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="decayRatePct" value="0.2" min="0" max="100" step="0.05">
+                        <span class="unit-suffix" data-i18n="unitPctApp"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_decayRatePct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="maxIncreaseOfTotalSupplyPct"><span data-i18n="maxIncreaseOfTotalSupplyPct">Daily Mint Cap</span><button type="button" class="help-btn" data-help="help_maxIncreaseOfTotalSupplyPct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="maxIncreaseOfTotalSupplyPct" value="0.2" min="0" max="100" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_maxIncreaseOfTotalSupplyPct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="maxIncreasePct"><span data-i18n="maxIncreasePct">Max Increase per Transfer</span><button type="button" class="help-btn" data-help="help_maxIncreasePct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="maxIncreasePct" value="20" min="0" max="100" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_maxIncreasePct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="maxUsagePct"><span data-i18n="maxUsagePct">Ideal Usage Rate</span><button type="button" class="help-btn" data-help="help_maxUsagePct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="maxUsagePct" value="10" min="0" max="100" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_maxUsagePct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="changePct"><span data-i18n="changePct">Usage Deviation Penalty</span><button type="button" class="help-btn" data-help="help_changePct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="changePct" value="30" min="0" max="100" step="1">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_changePct" hidden></div>
+                </div>
+            </div>
+            <div class="note" data-i18n="tokenNote">Decay is applied at UTC day boundaries, compounding, exactly as PCECommunityToken.getCurrentFactor. Longer transfer messages make the usage-deviation penalty apply in full (ArigatoCreation).</div>
+        </details>
+
+        <details open class="param-group" id="sec-pce">
+            <summary><span data-i18n="pceSettings">PCE Link</span><button type="button" class="help-btn" data-help="helpPce" aria-label="Help">?</button></summary>
+            <div class="help-panel" data-help-panel="helpPce" hidden></div>
+            <div class="grid-2">
+                <div class="input-group">
+                    <label for="dilutionFactor"><span data-i18n="dilutionFactor">Dilution Factor</span><button type="button" class="help-btn" data-help="help_dilutionFactor" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="dilutionFactor" value="1" min="0.1" max="1000" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitCtPerPce">CT/PCE</span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_dilutionFactor" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="pceSwapInPerDay"><span data-i18n="pceSwapInPerDay">Swap-in Frequency</span><button type="button" class="help-btn" data-help="help_pceSwapInPerDay" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="pceSwapInPerDay" value="0.01" min="0" max="1000" step="0.01">
+                        <span class="unit-suffix" data-i18n="unitPerDayCount">/day</span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_pceSwapInPerDay" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="pceSwapInMeanPce"><span data-i18n="pceSwapInMeanPce">Avg Swap-in Amount</span><button type="button" class="help-btn" data-help="help_pceSwapInMeanPce" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="pceSwapInMeanPce" value="10000" min="0" max="1000000" step="100">
+                        <span class="unit-suffix" data-i18n="unitPce">PCE</span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_pceSwapInMeanPce" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="metaTxFeePce"><span data-i18n="metaTxFeePce">Meta-tx Fee</span><button type="button" class="help-btn" data-help="help_metaTxFeePce" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="metaTxFeePce" value="0.05" min="0" max="10000" step="0.01">
+                        <span class="unit-suffix" data-i18n="unitPcePerTx">PCE/tx</span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_metaTxFeePce" hidden></div>
+                </div>
+            </div>
+            <div class="note" data-i18n="pceNote">PCE itself decays 0.2% per week. Swap-ins lock PCE into the reserve and mint community tokens at the current rate (dilution x community factor / PCE factor), exactly as swapToLocalToken.</div>
+        </details>
+
+        <details open class="param-group" id="sec-population">
+            <summary><span data-i18n="population">Population</span><button type="button" class="help-btn" data-help="helpPopulation" aria-label="Help">?</button></summary>
+            <div class="help-panel" data-help-panel="helpPopulation" hidden></div>
+            <div class="grid-2">
+                <div class="input-group">
+                    <label for="initialCount"><span data-i18n="initialCount">Initial Members</span><button type="button" class="help-btn" data-help="help_initialCount" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="initialCount" value="200" min="4" max="100000" step="1">
+                        <span class="unit-suffix" data-i18n="unitMembers"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_initialCount" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="days"><span data-i18n="days">Simulation Days</span><button type="button" class="help-btn" data-help="help_days" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="days" value="3650" min="2" max="3650" step="1">
+                        <span class="unit-suffix" data-i18n="unitDays"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_days" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="churnAnnualPct"><span data-i18n="churnAnnualPct">Annual Churn</span><button type="button" class="help-btn" data-help="help_churnAnnualPct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="churnAnnualPct" value="10" min="0" max="99" step="1">
+                        <span class="unit-suffix" data-i18n="unitPctYear"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_churnAnnualPct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="exitSpendPct"><span data-i18n="exitSpendPct">Exit Spend Rate</span><button type="button" class="help-btn" data-help="help_exitSpendPct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="exitSpendPct" value="100" min="0" max="100" step="5">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_exitSpendPct" hidden></div>
+                </div>
+            </div>
+            <h3 class="param-subhead"><span data-i18n="growthModel">Growth Model</span><button type="button" class="help-btn" data-help="help_growthModel" aria-label="Help">?</button></h3>
+            <div class="grid-2">
+                <div class="input-group">
+                    <div class="radio-group" id="growthModel" role="radiogroup">
+                        <label class="radio-opt"><input type="radio" name="growthModel" value="none"><span data-i18n="growthNone">None (fixed)</span><button type="button" class="help-btn" data-help="help_growthNone" data-help-target="help_growthModel" aria-label="Help">?</button></label>
+                        <label class="radio-opt"><input type="radio" name="growthModel" value="linear"><span data-i18n="growthLinear">Linear</span><button type="button" class="help-btn" data-help="help_growthLinear" data-help-target="help_growthModel" aria-label="Help">?</button></label>
+                        <label class="radio-opt"><input type="radio" name="growthModel" value="exp"><span data-i18n="growthExp">Exponential</span><button type="button" class="help-btn" data-help="help_growthExp" data-help-target="help_growthModel" aria-label="Help">?</button></label>
+                        <label class="radio-opt"><input type="radio" name="growthModel" value="logistic" checked><span data-i18n="growthLogistic">Logistic (S-curve)</span><button type="button" class="help-btn" data-help="help_growthLogistic" data-help-target="help_growthModel" aria-label="Help">?</button></label>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_growthModel" hidden></div>
+                </div>
+                <div class="input-group growth-param" data-model="linear" hidden>
+                    <label for="growthPerDay"><span data-i18n="growthPerDay">New Members</span><button type="button" class="help-btn" data-help="help_growthPerDay" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="growthPerDay" value="1" min="0" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitMembersDay"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_growthPerDay" hidden></div>
+                </div>
+                <div class="input-group growth-param" data-model="exp" hidden>
+                    <label for="growthRatePct"><span data-i18n="growthRatePct">Daily Growth Rate</span><button type="button" class="help-btn" data-help="help_growthRatePct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="growthRatePct" value="0.5" min="0" max="10" step="0.1">
+                        <span class="unit-suffix" data-i18n="unitPctDay"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_growthRatePct" hidden></div>
+                </div>
+                <div class="input-group growth-param" data-model="logistic">
+                    <label for="logisticK"><span data-i18n="logisticK">Carrying Capacity</span><button type="button" class="help-btn" data-help="help_logisticK" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="logisticK" value="1000" min="4" max="100000" step="1">
+                        <span class="unit-suffix" data-i18n="unitMembers"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_logisticK" hidden></div>
+                </div>
+                <div class="input-group growth-param" data-model="logistic">
+                    <label for="logisticR"><span data-i18n="logisticR">Growth Rate r</span><button type="button" class="help-btn" data-help="help_logisticR" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="logisticR" value="0.02" min="0" max="1" step="0.005">
+                        <span class="unit-suffix" data-i18n="unitPerDay"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_logisticR" hidden></div>
+                </div>
+            </div>
+            <h3 class="param-subhead"><span data-i18n="graphModel">Graph Model</span><button type="button" class="help-btn" data-help="help_graphModel" aria-label="Help">?</button></h3>
+            <div class="grid-2">
+                <div class="input-group">
+                    <div class="radio-group" id="graphModel" role="radiogroup">
+                        <label class="radio-opt"><input type="radio" name="graphModel" value="ba" checked><span data-i18n="graphBa">Scale-free (Barabasi-Albert)</span><button type="button" class="help-btn" data-help="help_graphBa" data-help-target="help_graphModel" aria-label="Help">?</button></label>
+                        <label class="radio-opt"><input type="radio" name="graphModel" value="cluster"><span data-i18n="graphCluster">Clustered (small-world)</span><button type="button" class="help-btn" data-help="help_graphCluster" data-help-target="help_graphModel" aria-label="Help">?</button></label>
+                        <label class="radio-opt"><input type="radio" name="graphModel" value="random"><span data-i18n="graphRandom">Sequential random</span><button type="button" class="help-btn" data-help="help_graphRandom" data-help-target="help_graphModel" aria-label="Help">?</button></label>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_graphModel" hidden></div>
+                </div>
+            </div>
+            <div class="note" data-i18n="populationNote">Newcomers receive a welcome transfer from their richest neighbor and count as guests (separate ARIGATO quota) on the day of their first actual transfer — normally the join day. Leavers keep their balance, which decays away as a dormant wallet.</div>
+        </details>
+
+        <details open class="param-group" id="sec-personas">
+            <summary><span data-i18n="personas">Personas</span><button type="button" class="help-btn" data-help="helpPersonas" aria-label="Help">?</button></summary>
+            <div class="help-panel" data-help-panel="helpPersonas" hidden></div>
+            <div class="persona-cards" id="personaCards"></div>
+            <button type="button" class="add-btn add-persona" id="addPersona">＋</button>
+        </details>
+
+        
+
+
+        
+
+        <div class="error" id="errorBox" hidden></div>
+        <div class="info" id="warnBox" hidden></div>
+        <h2 class="results-title" id="resultsHeading" data-i18n="resultsTitle" hidden>Results</h2>
+        <div class="sweep-switch" id="sweepSwitch" hidden></div>
+
+        <div id="results" hidden>
+            <div class="detail-head">
+                <div class="detail-title" id="detailTitle"></div>
+                <div class="note detail-meta" id="mcNote" hidden></div>
+            </div>
+            <div class="overview-wrap" id="sec-overview">
+                <h3 class="overview-head"><span data-i18n="summary">Summary</span><button type="button" class="help-btn" data-help="helpOverview" aria-label="Help">?</button></h3>
+                <div class="help-panel" data-help-panel="helpOverview" hidden></div>
+                <dl class="overview-card" id="overviewCard"></dl>
+                <div class="help-panel" data-help-panel="overviewItem" hidden></div>
+                <h3 class="overview-head"><span data-i18n="simMetricsTitle">Simulator Metrics</span><button type="button" class="help-btn" data-help="helpSimMetrics" aria-label="Help">?</button></h3>
+                <div class="help-panel" data-help-panel="helpSimMetrics" hidden></div>
+                <dl class="overview-card" id="simMetricsCard"></dl>
+                <div class="help-panel" data-help-panel="simMetricsItem" hidden></div>
+                <h3 class="overview-head"><span data-i18n="pceMetricsTitle">PCE Metrics</span><button type="button" class="help-btn" data-help="helpPceMetrics" aria-label="Help">?</button></h3>
+                <div class="help-panel" data-help-panel="helpPceMetrics" hidden></div>
+                <dl class="overview-card" id="pceMetricsCard"></dl>
+                <div class="help-panel" data-help-panel="pceMetricsItem" hidden></div>
+            </div>
+
+            <div class="chart-grid" id="sec-charts">
+                <div class="chart-card">
+                    <h3><span data-i18n="chartPceValue">Supply Value in PCE &amp; Reserve</span><button type="button" class="help-btn" data-help="helpChartPceValue" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartPceValue" hidden></div>
+                    <div class="chart-box"><canvas id="chartPceValue"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartReserveRatio">Reserve Ratio</span><button type="button" class="help-btn" data-help="helpChartReserveRatio" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartReserveRatio" hidden></div>
+                    <div class="chart-box"><canvas id="chartReserveRatio"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartSwapIn">PCE Swap Inflow (daily)</span><button type="button" class="help-btn" data-help="helpChartSwapIn" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartSwapIn" hidden></div>
+                    <div class="chart-box"><canvas id="chartSwapIn"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartFeeOut">Relayer Fees (daily)</span><button type="button" class="help-btn" data-help="helpChartFeeOut" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartFeeOut" hidden></div>
+                    <div class="chart-box"><canvas id="chartFeeOut"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartSupply">Total Supply</span><button type="button" class="help-btn" data-help="helpChartSupply" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartSupply" hidden></div>
+                    <div class="chart-box"><canvas id="chartSupply"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartMint">Increase (daily ARIGATO mint)</span><button type="button" class="help-btn" data-help="helpChartMint" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartMint" hidden></div>
+                    <div class="chart-box"><canvas id="chartMint"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartDecayDaily">Decay (daily)</span><button type="button" class="help-btn" data-help="helpChartDecay" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartDecay" hidden></div>
+                    <div class="chart-box"><canvas id="chartDecayDaily"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartTxCount">Transfers per Day</span><button type="button" class="help-btn" data-help="helpChartTxCount" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartTxCount" hidden></div>
+                    <div class="chart-box"><canvas id="chartTxCount"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartVolume">Transfer Volume per Day</span><button type="button" class="help-btn" data-help="helpChartVolume" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartVolume" hidden></div>
+                    <div class="chart-box"><canvas id="chartVolume"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartActiveUsers">Active Users</span><button type="button" class="help-btn" data-help="helpChartActiveUsers" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartActiveUsers" hidden></div>
+                    <div class="chart-box"><canvas id="chartActiveUsers"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartPopulation">Population</span><button type="button" class="help-btn" data-help="helpChartPopulation" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartPopulation" hidden></div>
+                    <div class="chart-box"><canvas id="chartPopulation"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3><span data-i18n="chartDist">Wealth Distribution</span><button type="button" class="help-btn" data-help="helpChartDist" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpChartDist" hidden></div>
+                    <div class="chart-box"><canvas id="chartDist"></canvas></div>
+                </div>
+            </div>
+
+            <div class="chart-card" id="rankingCard">
+                <h3><span data-i18n="rankingTitle">Agent Ranking</span><button type="button" class="help-btn" data-help="helpRanking" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpRanking" hidden></div>
+                <div class="table-scroll">
+                    <table class="ranking-table" id="rankingTable"></table>
+                </div>
+                <div class="pager" id="rankingPager"></div>
+            </div>
+
+            <div class="chart-card network-card" id="networkCard">
+                <div class="section-head">
+                    <h3><span data-i18n="chartNetwork">Social Graph</span><button type="button" class="help-btn" data-help="helpNetwork" aria-label="Help">?</button></h3>
+                    <div class="help-panel" data-help-panel="helpNetwork" hidden></div>
+                    <div class="net-metric-wrap">
+                        <span class="net-metric-label" data-i18n="netMetricLabel">Node size:</span>
+                        <select id="netMetric" class="net-metric">
+                            <option value="balance" selected data-i18n="netMetricBalance">Balance</option>
+                            <option value="txAmount" data-i18n="netMetricTxAmount">Sent amount</option>
+                            <option value="rxAmount" data-i18n="netMetricRxAmount">Received amount</option>
+                            <option value="minted" data-i18n="netMetricMinted">Minted</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="network-legend" id="networkLegend"></div>
+                <canvas id="networkCanvas"></canvas>
+                <div class="net-tooltip" id="netTooltip" hidden></div>
+                <div class="slider-row">
+                    <input type="range" id="daySlider" min="0" max="0" value="0" step="1">
+                    <span class="slider-label" id="sliderLabel"></span>
+                </div>
+                <div class="note" id="networkSampledNote" hidden></div>
+                <div class="note" data-i18n="networkNote">Node size = balance, color = persona, gray = churned. Layout is computed once for the final graph.</div>
+            </div>
+
+            <div class="note" data-i18n="modelNote">Model notes: balances are simulated in whole-token units (not wei); decay factor math is exact WAD integer math identical to the contract. The simulation day starts at UTC 0:00.</div>
+        </div>
+
+        <div id="sweepResults" hidden>
+            <h2 class="section-title" data-i18n="sweepResultsTitle">Sweep Results</h2>
+            <div class="chart-grid" id="sweepChartGrid">
+                <div class="chart-card">
+                    <h3 data-i18n="chartSweepTokens">Final metrics vs parameter (tokens)</h3>
+                    <div class="chart-box"><canvas id="chartSweepTokens"></canvas></div>
+                </div>
+                <div class="chart-card">
+                    <h3 data-i18n="chartSweepRatios">Final metrics vs parameter (ratios)</h3>
+                    <div class="chart-box"><canvas id="chartSweepRatios"></canvas></div>
+                </div>
+            </div>
+            <div class="table-scroll">
+                <table class="sweep-table" id="sweepTable"></table>
+            </div>
+            <div class="note" id="sweepNote"></div>
+        </div>
+    </div>
+    </div>
+    <dialog id="agentDialog">
+        <div class="dialog-body" id="agentDialogBody"></div>
+    </dialog>
+    <script type="module" src="app.js"></script>
+</body>
+</html>
