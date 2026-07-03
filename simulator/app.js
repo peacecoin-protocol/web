@@ -491,28 +491,18 @@ function renderRepresentativeCharts() {
         options: baseOptions(false),
     });
 
-    // daily PCE swap inflow: plot only the days something flowed in (like the
-    // decay chart, so the index-mode tooltip does not flicker across zeros);
-    // the card hides entirely when swap-ins are disabled
-    const swapDays = [];
-    const swapVals = [];
-    r.swapInPce.forEach((v, i) => {
-        if (v > 0) { swapDays.push(r.day[i]); swapVals.push(v); }
-    });
-    $('chartSwapIn').closest('.chart-card').hidden = swapVals.length === 0;
-    if (swapVals.length > 0) {
+    // cumulative PCE swap inflow; the card hides when swap-ins are disabled
+    const hasSwapIn = r.swapInPce.some((v) => v > 0);
+    $('chartSwapIn').closest('.chart-card').hidden = !hasSwapIn;
+    if (hasSwapIn) {
+        let swapSum = 0;
         makeChart('chartSwapIn', {
-            type: 'bar',
+            type: 'line',
             data: {
-                labels: swapDays,
-                datasets: [{
-                    label: t(lang, 'seriesSwapInPce'),
-                    data: swapVals,
-                    backgroundColor: COLOR_TOP10,
-                    borderWidth: 0,
-                    barPercentage: 1.0,
-                    categoryPercentage: 0.9,
-                }],
+                labels: r.day,
+                datasets: [
+                    line(t(lang, 'seriesSwapInPce'), r.swapInPce.map((v) => (swapSum += v)), COLOR_TOP10),
+                ],
             },
             options: baseOptions(false),
         });
