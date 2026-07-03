@@ -119,6 +119,17 @@ function defaultParams(overrides = {}) {
     };
 }
 
+// defensive: a zero/fractional initial count must not lose the supply
+{
+    const sim = runAll(defaultParams({
+        token: { maxIncreaseOfTotalSupplyBp: 0 },
+        population: { days: 30, initialCount: 0, growthModel: 'linear', growthPerDay: 2, churnAnnualPct: 0 },
+    }));
+    let sum = 0;
+    for (let i = 0; i < sim.agents.count; i++) sum += sim.agents.balance[i];
+    check('initialCount guard: balances still sum to supply', sum, sim.results.totalRaw.at(-1));
+}
+
 // conservation: with minting disabled, raw supply never changes
 {
     const sim = runAll(defaultParams({

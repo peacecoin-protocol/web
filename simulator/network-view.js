@@ -244,14 +244,18 @@ export function createNetworkView(canvas, sim, seed = 7, hooks = {}) {
         return best;
     }
 
+    // listeners are scoped to this view: destroy() detaches them so a re-run
+    // or sweep-tab switch does not stack stale closures on the shared canvas
+    const ac = new AbortController();
+    const opts = { signal: ac.signal };
     canvas.addEventListener('mousemove', (e) => {
         const li = hitTest(e);
         canvas.style.cursor = li >= 0 ? 'pointer' : 'default';
         if (hooks.onHover) hooks.onHover(li >= 0 ? nodes[li] : null, e.clientX, e.clientY);
-    });
+    }, opts);
     canvas.addEventListener('mouseleave', () => {
         if (hooks.onHover) hooks.onHover(null, 0, 0);
-    });
+    }, opts);
     canvas.addEventListener('click', (e) => {
         const li = hitTest(e);
         if (li < 0 || li === selectedLocal) {
@@ -261,13 +265,14 @@ export function createNetworkView(canvas, sim, seed = 7, hooks = {}) {
             computeDist(li);
         }
         if (lastSnapshot) render(lastSnapshot);
-    });
+    }, opts);
     canvas.addEventListener('dblclick', (e) => {
         const li = hitTest(e);
         if (li >= 0 && hooks.onOpen) hooks.onOpen(nodes[li]);
-    });
+    }, opts);
 
     return {
+        destroy() { ac.abort(); },
         render,
         setMetric(key) {
             metric = key;

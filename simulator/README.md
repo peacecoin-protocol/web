@@ -45,9 +45,11 @@ No wallet, no backend — pure client-side JavaScript.
   receive weight), clustered (small-world) or sequential random. Recipients are
   picked among graph neighbors, weighted by the recipient persona's receive
   weight.
-- **PCE link** — a faithful port of the PCE side of `PCEToken.sol`. PCE itself
-  decays 0.2% per week (`0.998^floor(day/7)`, same WAD math as the community
-  factor). The community token is created from a PCE deposit
+- **PCE link** — a port of the PCE side of `PCEToken.sol`. PCE itself decays
+  0.2% per week: the contract counts actual Wednesday boundaries with a
+  998e18/1000e18 rate base, the simulator uses a plain 7-day schedule with the
+  community factor's WAD routine — identical shape, wei-level rounding
+  differences. The community token is created from a PCE deposit
   (`createToken`: initial reserve = initial supply / dilution factor), and
   members keep swapping PCE in at a configurable Poisson frequency and average
   amount: each swap-in locks PCE into the reserve and mints community tokens
@@ -60,12 +62,15 @@ No wallet, no backend — pure client-side JavaScript.
   (`swapableToPCERate` defaults to 0 on-chain).
 - **Meta-transaction fees (PIP-13)** — every transfer is a meta-transaction:
   the sender is charged a configurable PCE-denominated fee, converted at the
-  live swap rate and burned from their community-token balance, while the
-  relayer is paid the PCE out of the community reserve
-  (`_collectFeeAsPCE` + `swapFeeFromLocalToken`). When the reserve cannot
-  cover the fee, no relayer carries the tx and all transfers halt (a warning
-  reports the starvation day). Fees therefore drain the reserve continuously —
-  swap-ins must outrun them.
+  live swap rate and burned from their community-token balance (fees below
+  one whole token round to zero on the community side; the reserve outflow is
+  exact), while the relayer is paid the PCE out of the community reserve
+  (`_collectFeeAsPCE` + `swapFeeFromLocalToken`). On-chain the fee floats
+  with the chain's base fee; the simulator uses a constant per-tx fee
+  (default = the live on-chain value). When the reserve cannot cover the fee,
+  no relayer carries the tx and all transfers halt (a warning reports the
+  starvation day). Fees therefore drain the reserve continuously — swap-ins
+  must outrun them.
 
 Every section header carries a small "?" button that expands an inline,
 bilingual help panel explaining the parameters, formulas and how to read the
@@ -78,8 +83,8 @@ The results layout borrows the information design of the PCE web explorer:
 - **Overview tiles** — opening/closing supply, total minted, decay losses,
   velocity (transfer volume / closing supply), transfer counts and volume,
   active members, Gini and top-10% share, in a bordered tile grid.
-- **Decay-schedule stats** — annualized rates,
-  the current factor and effective rate, applications so far and the next one.
+- **Decay-schedule stats** — annualized rate, current factor and application
+  count, shown as tiles inside the summary.
 - **Time-series charts** — total supply, daily increase (ARIGATO mint), daily
   decay, transfers per day, transfer volume per day, active users
   (explorer-style: an account is active on a day when it sends or receives at
@@ -102,18 +107,21 @@ The results layout borrows the information design of the PCE web explorer:
 - UI inputs are natural percentages (e.g. decay rate 0.2% per application);
   they are converted to the contract's basis-point units internally
   (0.2% decay -> `afterDecreaseBp` 9980, mint cap 1% -> 100 bp, ...).
-- Balances are simulated in whole-token units (not wei). The decay factor itself
-  is exact to the contract; per-transfer floors differ from on-chain wei
-  rounding by amounts irrelevant for trend analysis. Whole-token math stays
+- Balances are simulated in whole-token units (not wei). The decay factor is
+  computed with the contract's WAD routine from day 0 in one shot; on-chain the
+  factor is re-materialized on every transfer, so long chains of floors can
+  differ by tens of wei — irrelevant for trend analysis, as are the
+  per-transfer whole-token floors. Whole-token math stays
   exact while every intermediate product fits in 2^53 — the engine derives the
   corresponding raw-supply ceiling from the daily mint cap (roughly 1e9 tokens
   at the default cap) and stops with a warning beyond it.
 - The simulation day starts at UTC 0:00, so "apply decay when `day % interval == 0`"
   is equivalent to the contract's `floor(elapsedDays / interval)`.
 - Daily mint counters are 0-based. The contract's per-sender sentinel of 1 is
-  corrected inside `ArigatoCreation.compute`, so that counter is exactly
-  equivalent; the on-chain global/guest counters start at 1 wei uncorrected,
-  making their effective caps 1 wei lower — far below one whole-token unit.
+  corrected inside `ArigatoCreation.compute` (equivalent except for a same-day
+  first-tx account, where on-chain is 1 wei looser); the on-chain global/guest
+  counters start at 1 wei uncorrected, making their effective caps 1 wei
+  lower — far below one whole-token unit.
 - The current `transfer()`/`transferFrom()` pass `messageCharacters = 1`; the
   persona message-length settings model message-carrying transfers
   (`ArigatoCreation.compute`'s variable-message scenario).
@@ -129,7 +137,9 @@ The results layout borrows the information design of the PCE web explorer:
   the persona `decay response` values, not the constants.
 - Recirculation is one aggregated transfer per agent per day (a share of
   yesterday's receipts), not itemized supplier payments.
-- `splitToken` (PIP-16 rebase) is out of scope.
+- `splitToken` (PIP-16 rebase) and `increaseTokenValue` (exchange-rate changes
+  from extra PCE deposits) are out of scope; `exchangeRate` stays at the
+  creation-time dilution factor.
 
 ## Verification
 

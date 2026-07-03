@@ -33,9 +33,10 @@ export function patternBits(simSeed, agentId) {
 const cache = new Map();
 
 export function identiconURL(agentId, simSeed, personaIdx, size = 24) {
-    const key = `${simSeed}:${agentId}:${size}`;
+    const key = `${simSeed}:${agentId}:${personaIdx}:${size}`;
     const hit = cache.get(key);
     if (hit) return hit;
+    if (cache.size > 5000) cache.clear(); // sweeps share seeds: keep it bounded
 
     const { bits, satJitter, lightJitter } = patternBits(simSeed, agentId);
     const [h, s, l] = PERSONA_HSL[personaIdx % PERSONA_HSL.length];

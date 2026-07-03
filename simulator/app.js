@@ -693,6 +693,7 @@ function renderNetTooltip(id, clientX, clientY) {
 }
 
 function setupNetwork() {
+    if (networkView) networkView.destroy();
     networkView = createNetworkView($('networkCanvas'), sim, sim.params.run.seed, {
         onHover: renderNetTooltip,
         onOpen: (id) => ranking && ranking.openDialog(id),
@@ -750,7 +751,7 @@ function computeTiles() {
         { key: 'ovTxAmount', emoji: '\u{1F4B8}', value: v.volume, frac: 0 },
         { key: 'ovIncrease', emoji: '\u{1F53A}', value: v.minted, frac: 0 },
         { key: 'ovCharAvg', emoji: '\u{1F606}', value: v.msgChars / (v.txCount || 1), frac: 2 },
-        { key: 'ovVelocity', emoji: '\u{1F504}', value: v.volume / (v.end || 1), frac: 2 },
+        { key: 'ovVelocity', emoji: '\u{1F504}', value: v.end > 0 ? v.volume / v.end : 0, frac: 2 },
         { key: 'ovEndBalance', emoji: '\u{1F48E}', value: v.end, frac: 0 },
         { key: 'ovTxCount', emoji: '\u{1F4E4}', value: v.txCount, frac: 0 },
         { key: 'ovDecrease', emoji: '\u{1F53B}', value: v.decay, frac: 0 },
@@ -1083,6 +1084,7 @@ async function run() {
     $('resultsHeading').hidden = true;
     $('sweepResults').hidden = true;
     $('sweepSwitch').hidden = true;
+    if (networkView) networkView.destroy();
     networkView = null;
     mc = null;
 
@@ -1121,6 +1123,9 @@ async function run() {
         // jump to the results (the sticky sweep tabs land at the top with them)
         $('resultsHeading').scrollIntoView({ behavior: 'smooth', block: 'start' });
     } catch (err) {
+        sweepRuns = null;
+        lastSweep = null;
+        activePoint = -1;
         finishRun([]);
         const errorBox = $('errorBox');
         errorBox.textContent = String(err);
@@ -1159,6 +1164,7 @@ function selectSweepPoint(ci) {
         // the results heading above it) so the user can move to a healthy
         // point, but hide the stale detail view
         $('results').hidden = true;
+        if (networkView) networkView.destroy();
         networkView = null;
         buildToc();
     }
@@ -1281,10 +1287,12 @@ function fieldValues(key) {
     const lo = proto.getAttribute('min') !== null ? parseFloat(proto.getAttribute('min')) : -Infinity;
     const hi = proto.getAttribute('max') !== null ? parseFloat(proto.getAttribute('max')) : Infinity;
     const out = [];
+    const integer = SWEEP_PARAMS[key]?.integer;
     for (const el of $(`${key}-list`).querySelectorAll('.value-input')) {
         let v = parseFloat(el.value);
         if (!Number.isFinite(v)) continue;
         v = Math.min(hi, Math.max(lo, v));
+        if (integer) v = Math.round(v);
         out.push(v);
     }
     return out;
@@ -1525,15 +1533,13 @@ function setLang(next) {
     $('langJa').classList.toggle('active', lang === 'ja');
     const warnBox = $('warnBox');
     if (sim && sim.finished() && !warnBox.hidden) {
-        const warnings = [];
-        if (sim.aborted) warnings.push(t(lang, 'abortedWarning'));
+        const warnings = collectWarnings(sim);
         warnBox.textContent = warnings.join(' ');
         warnBox.hidden = warnings.length === 0;
     }
     if ($('agentDialog').open) $('agentDialog').close();
     if (sim && !$('results').hidden) {
         renderSummary();
-        renderDecayTable();
         renderCharts();
         if (ranking) ranking.setLang(lang);
         renderNetworkLegend();

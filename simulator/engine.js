@@ -97,6 +97,9 @@ export function arigatoCompute(p) {
 
 function poisson(lambda, rng) {
     if (lambda <= 0) return 0;
+    // Math.exp(-lambda) underflows to 0 around lambda ~ 745, breaking Knuth's
+    // loop; fall back to the normal approximation for large lambda
+    if (lambda > 700) return Math.max(0, Math.round(gauss(lambda, Math.sqrt(lambda), rng)));
     const L = Math.exp(-lambda);
     let k = 0;
     let p = 1;
@@ -157,7 +160,7 @@ function rawSupplyLimit(maxIncreaseOfTotalSupplyBp) {
 
 export function createSim(params) {
     const { token, personas, graph: gopts, run } = params;
-    const pop = params.population;
+    const pop = { ...params.population, initialCount: Math.max(1, Math.round(params.population.initialCount)) };
     const days = pop.days;
     const rng = mulberry32(run.seed);
 
@@ -340,13 +343,14 @@ export function createSim(params) {
     }
 
     function performTx(sender, recipient, rawAmount, msgChars, d) {
+        if (rawAmount <= 0) return false;
         if (metaTxFeePce > 0 && depositedPce < metaTxFeePce) {
             // reserve exhausted: no relayer accepts any meta-tx
             if (feeStarvedDay < 0) feeStarvedDay = d;
             return false;
         }
         const rawBalance = balance[sender];
-        if (rawAmount <= 0 || rawBalance < rawAmount + rawFeeToday) return false;
+        if (rawBalance < rawAmount + rawFeeToday) return false;
         // A sender with balance > 0 always has firstTxDay set (balance only arrives
         // via a receive, which stamps it below; the initial cohort is FIRST_TX_NEVER),
         // but treat UNSET as guest anyway — the contract stamps firstTransactionTime
@@ -533,6 +537,9 @@ export function createSim(params) {
                 if (recipient < 0) break;
                 balance[recipient] += raw;
                 totalRaw += raw;
+                // on-chain the mint passes _beforeTokenTransferAtAddress and
+                // stamps firstTransactionTime, which drives guest detection
+                if (firstTxDay[recipient] === FIRST_TX_UNSET) firstTxDay[recipient] = d;
                 depositedPce += pceAmount;
                 swapInPceToday += pceAmount;
                 swapInCountToday++;
