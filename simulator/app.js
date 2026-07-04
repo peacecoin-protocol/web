@@ -46,16 +46,17 @@ const PERSONA_FIELDS = [
     ['msgMinHead', 'p-msgMin', { min: '0', max: '10', step: '1' }, 'unitChars'],
     ['msgMaxHead', 'p-msgMax', { min: '0', max: '10', step: '1' }, 'unitChars'],
     ['weightHead', 'p-weight', { min: '0.01', max: '100', step: '0.1' }, 'unitTimes'],
+    ['balanceSigmaHead', 'p-balanceSigma', { min: '0', max: '2', step: '0.1' }, null],
     ['decayResponseHead', 'p-decayResponse', { min: '0', max: '5', step: '0.1' }, null],
     ['recircHead', 'p-recirc', { min: '0', max: '100', step: '5' }, 'unitPct'],
     ['recvWeightHead', 'p-recvWeight', { min: '0', max: '50', step: '0.5' }, 'unitTimes'],
 ];
 
 const DEFAULT_PERSONAS = [
-    { nameKey: 'personaActive', values: [20, 1.5, 8, 4, 8, 10, 1.0, 1.0, 0, 1] },
-    { nameKey: 'personaCasual', values: [50, 0.2, 5, 3, 3, 6, 0.7, 0.5, 0, 1] },
-    { nameKey: 'personaHoarder', values: [15, 0.05, 2, 1, 0, 2, 2.0, 0.2, 0, 1] },
-    { nameKey: 'personaMerchant', values: [15, 0.5, 20, 8, 1, 3, 3.0, 0.3, 70, 3] },
+    { nameKey: 'personaActive', values: [20, 1.5, 8, 4, 8, 10, 1.0, 0.5, 1.0, 0, 1] },
+    { nameKey: 'personaCasual', values: [50, 0.2, 5, 3, 3, 6, 0.7, 0.5, 0.5, 0, 1] },
+    { nameKey: 'personaHoarder', values: [15, 0.05, 2, 1, 0, 2, 2.0, 0.5, 0.2, 0, 1] },
+    { nameKey: 'personaMerchant', values: [15, 0.5, 20, 8, 1, 3, 3.0, 0.5, 0.3, 70, 3] },
 ];
 
 let personaUid = 0;
@@ -194,6 +195,7 @@ function readParams() {
             msgMin: Math.round(v('p-msgMin')),
             msgMax: Math.round(v('p-msgMax')),
             balanceWeight: v('p-weight'),
+            balanceSigma: v('p-balanceSigma'),
             decayResponse: v('p-decayResponse'),
             recircBp: pctToBp(v('p-recirc')),
             recvWeight: v('p-recvWeight'),
@@ -232,6 +234,8 @@ function readParams() {
             logisticR: num('logisticR'),
             churnAnnualPct: firstValue('churnAnnualPct'),
             exitSpendPct: num('exitSpendPct'),
+            welcomeAvgPct: num('welcomeAvgPct'),
+            welcomeCapPct: num('welcomeCapPct'),
         },
         pce: {
             dilutionFactor: firstValue('dilutionFactor'),
@@ -241,7 +245,15 @@ function readParams() {
         },
         graph: {
             model: radioVal('graphModel'),
-            m: 3, kIn: 4, pOut: 0.1, k: 4, clusterTargetSize: 50,
+            m: Math.round(num('graphDegree')),
+            k: Math.round(num('graphDegree')),
+            kIn: Math.round(num('graphDegree')),
+            pOut: 0.1,
+            clusterTargetSize: Math.round(num('clusterSize')),
+        },
+        behavior: {
+            decayBoostCap: num('decayBoostCap'),
+            eveSpikeGain: num('eveSpikeGain'),
         },
         run: {
             seed: seeds ? seeds[0] : 0,
@@ -252,8 +264,10 @@ function readParams() {
     const flat = [
         ...Object.values(params.token), ...Object.values(params.population).filter((v) => typeof v === 'number'),
         ...Object.values(params.pce),
+        params.graph.m, params.graph.clusterTargetSize,
+        ...Object.values(params.behavior),
         params.run.seed,
-        ...personas.flatMap((p) => [p.share, p.lambda, p.amountMeanBp, p.amountSdBp, p.msgMin, p.msgMax, p.balanceWeight, p.decayResponse, p.recircBp, p.recvWeight]),
+        ...personas.flatMap((p) => [p.share, p.lambda, p.amountMeanBp, p.amountSdBp, p.msgMin, p.msgMax, p.balanceWeight, p.balanceSigma, p.decayResponse, p.recircBp, p.recvWeight]),
     ];
     if (flat.some((v) => !Number.isFinite(v))) errors.push(t(lang, 'invalidInput'));
     return { params, errors, seeds };
@@ -1711,7 +1725,8 @@ function wireHelp() {
 
 const SETTINGS_FORMAT = 'pce-community-token-simulator-settings';
 // plain single-value inputs; multi-value fields live in VALUE_FIELDS
-const SCALAR_IDS = ['initialSupply', 'days', 'growthPerDay', 'growthRatePct', 'logisticK', 'logisticR', 'exitSpendPct'];
+const SCALAR_IDS = ['initialSupply', 'days', 'growthPerDay', 'growthRatePct', 'logisticK', 'logisticR', 'exitSpendPct',
+    'welcomeAvgPct', 'welcomeCapPct', 'graphDegree', 'clusterSize', 'decayBoostCap', 'eveSpikeGain'];
 
 function collectSettings() {
     const values = {};
@@ -1763,8 +1778,18 @@ function applySettings(data) {
     if (typeof data.growthModel === 'string') setRadio('growthModel', data.growthModel);
     if (typeof data.graphModel === 'string') setRadio('graphModel', data.graphModel);
     if (Array.isArray(data.personas)) {
-        const rows = data.personas.slice(0, PERSONA_MAX).filter((p) =>
-            Array.isArray(p?.values) && p.values.length === PERSONA_FIELDS.length && p.values.every(finite));
+        const sigmaAt = PERSONA_FIELDS.findIndex(([k]) => k === 'balanceSigmaHead');
+        const rows = data.personas.slice(0, PERSONA_MAX)
+            .map((p) => {
+                // exports from before the balance-sigma field: pad with 0
+                if (Array.isArray(p?.values) && p.values.length === PERSONA_FIELDS.length - 1) {
+                    const values = p.values.slice();
+                    values.splice(sigmaAt, 0, 0);
+                    return { ...p, values };
+                }
+                return p;
+            })
+            .filter((p) => Array.isArray(p?.values) && p.values.length === PERSONA_FIELDS.length && p.values.every(finite));
         if (rows.length > 0) {
             $('personaCards').replaceChildren();
             for (const p of rows) addPersonaRow(String(p.name ?? '?'), p.values);
@@ -1799,7 +1824,7 @@ $('importFile').addEventListener('change', async (e) => {
 $('runBtn').addEventListener('click', run);
 $('addPersona').addEventListener('click', () => {
     if (personaRows().length < PERSONA_MAX) {
-        addPersonaRow(`${t(lang, 'personaDefaultName')} ${personaRows().length + 1}`, [0, 0.5, 5, 2, 1, 3, 1.0, 0.5, 0, 1]);
+        addPersonaRow(`${t(lang, 'personaDefaultName')} ${personaRows().length + 1}`, [0, 0.5, 5, 2, 1, 3, 1.0, 0.5, 0.5, 0, 1]);
         updateEstimates();
     }
 });

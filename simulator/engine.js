@@ -142,8 +142,6 @@ export function estimateTxCount(params) {
     return Math.round(total);
 }
 
-const WELCOME_AVG_FRACTION = 0.1; // newcomer receives 10% of the mean active balance...
-const WELCOME_SENDER_CAP = 0.5;   // ...capped at half of the welcoming sender's balance
 const MAX_AGENTS = 200000;
 const FIRST_TX_NEVER = -1;  // initial cohort: never treated as a guest
 const FIRST_TX_UNSET = -2;  // joined but no transfer has touched the account yet
@@ -160,6 +158,11 @@ function rawSupplyLimit(maxIncreaseOfTotalSupplyBp) {
 
 export function createSim(params) {
     const { token, personas, graph: gopts, run } = params;
+    const behavior = params.behavior ?? {};
+    // welcome transfer: fraction of the community mean a newcomer receives,
+    // capped at a fraction of the welcoming sender's balance
+    const welcomeFrac = Math.min(1, Math.max(0, (params.population.welcomeAvgPct ?? 10) / 100));
+    const welcomeCap = Math.min(1, Math.max(0, (params.population.welcomeCapPct ?? 50) / 100));
     const pop = { ...params.population, initialCount: Math.max(1, Math.round(params.population.initialCount)) };
     const days = pop.days;
     const rng = mulberry32(run.seed);
@@ -212,12 +215,20 @@ export function createSim(params) {
         firstTxDay[i] = FIRST_TX_NEVER;
     }
 
-    // --- initial balances by persona weight; remainder to agent 0 so the sum is exact ---
+    // --- initial balances by persona weight, with an optional log-normal
+    // spread inside each persona (balanceSigma = 0 keeps everyone equal);
+    // remainder to agent 0 so the sum is exact ---
+    const initW = new Float64Array(n0);
     let sumW = 0;
-    for (let i = 0; i < n0; i++) sumW += personas[persona[i]].balanceWeight;
+    for (let i = 0; i < n0; i++) {
+        const p = personas[persona[i]];
+        const sigma = p.balanceSigma ?? 0;
+        initW[i] = p.balanceWeight * (sigma > 0 ? Math.exp(gauss(0, sigma, rng)) : 1);
+        sumW += initW[i];
+    }
     let distributed = 0;
     for (let i = 0; i < n0; i++) {
-        balance[i] = Math.floor(token.initialSupply * personas[persona[i]].balanceWeight / sumW);
+        balance[i] = Math.floor(token.initialSupply * initW[i] / sumW);
         distributed += balance[i];
     }
     balance[0] += token.initialSupply - distributed;
@@ -303,12 +314,12 @@ export function createSim(params) {
     const annualDecay = token.decreaseIntervalDays > 0
         ? 1 - Math.pow(token.afterDecreaseBp / BP, 365 / token.decreaseIntervalDays)
         : 0;
-    const LAMBDA_BOOST_MAX = 5;  // cap so extreme decay schedules stay tractable
-    const EVE_SPIKE_GAIN = 10;   // eve spike = response x per-application loss x gain
+    const boostCap = Math.max(1, behavior.decayBoostCap ?? 5);   // frequency boost ceiling
+    const eveGain = Math.max(0, behavior.eveSpikeGain ?? 10);    // eve spike = response x loss x gain
     const lambdaBoost = personas.map((p) =>
-        Math.min(LAMBDA_BOOST_MAX, 1 + (p.decayResponse ?? 0) * annualDecay));
+        Math.min(boostCap, 1 + (p.decayResponse ?? 0) * annualDecay));
     const eveSpike = personas.map((p) =>
-        1 + (p.decayResponse ?? 0) * perApplicationDecay * EVE_SPIKE_GAIN);
+        1 + (p.decayResponse ?? 0) * perApplicationDecay * eveGain);
 
     let txBuf = new Int32Array(1024);
     const sortBuf = () => balance.slice(0, agentCount);
@@ -447,8 +458,8 @@ export function createSim(params) {
         }
         if (s >= 0) {
             const amount = Math.min(
-                Math.floor(avg * WELCOME_AVG_FRACTION),
-                Math.floor(balance[s] * WELCOME_SENDER_CAP)
+                Math.floor(avg * welcomeFrac),
+                Math.floor(balance[s] * welcomeCap)
             );
             performTx(s, i, amount, msgLenFor(persona[s]), d);
         }

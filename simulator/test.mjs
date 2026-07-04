@@ -130,6 +130,30 @@ function defaultParams(overrides = {}) {
     check('initialCount guard: balances still sum to supply', sum, sim.results.totalRaw.at(-1));
 }
 
+// balance sigma: log-normal spread keeps the initial supply exactly intact
+{
+    const personas = [
+        { name: 'a', share: 50, lambda: 0.2, amountMeanBp: 500, amountSdBp: 300, msgMin: 1, msgMax: 3, balanceWeight: 1.0, balanceSigma: 0.8, decayResponse: 0, recircBp: 0, recvWeight: 1 },
+        { name: 'b', share: 50, lambda: 0.2, amountMeanBp: 500, amountSdBp: 300, msgMin: 1, msgMax: 3, balanceWeight: 2.0, balanceSigma: 0, decayResponse: 0, recircBp: 0, recvWeight: 1 },
+    ];
+    const sim = runAll(defaultParams({
+        token: { maxIncreaseOfTotalSupplyBp: 0 },
+        population: { days: 2, growthModel: 'none', churnAnnualPct: 0 },
+        personas,
+        pce: { metaTxFeePce: 0 },
+    }));
+    let sum = 0;
+    const byPersona = [new Set(), new Set()];
+    for (let i = 0; i < sim.agents.count; i++) {
+        sum += sim.agents.balance[i];
+        byPersona[sim.agents.persona[i]].add(sim.agents.balance[i]);
+    }
+    // day-2 run moves some balances, so check the recorded day-0 supply only
+    check('balance sigma: supply conserved', sim.results.totalRaw[0], 1000000);
+    checkTrue('balance sigma: sigma>0 spreads balances', byPersona[0].size > 5,
+        `distinct=${byPersona[0].size}`);
+}
+
 // conservation: with minting disabled, raw supply never changes
 {
     const sim = runAll(defaultParams({

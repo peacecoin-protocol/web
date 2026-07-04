@@ -167,6 +167,22 @@
                     </div>
                     <div class="help-panel" data-help-panel="help_exitSpendPct" hidden></div>
                 </div>
+                <div class="input-group">
+                    <label for="welcomeAvgPct"><span data-i18n="welcomeAvgPct">Welcome Transfer</span><button type="button" class="help-btn" data-help="help_welcomeAvgPct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="welcomeAvgPct" value="10" min="0" max="100" step="1">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_welcomeAvgPct" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="welcomeCapPct"><span data-i18n="welcomeCapPct">Welcome Cap</span><button type="button" class="help-btn" data-help="help_welcomeCapPct" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="welcomeCapPct" value="50" min="0" max="100" step="5">
+                        <span class="unit-suffix" data-i18n="unitPct"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_welcomeCapPct" hidden></div>
+                </div>
             </div>
             <h3 class="param-subhead"><span data-i18n="growthModel">Growth Model</span><button type="button" class="help-btn" data-help="help_growthModel" aria-label="Help">?</button></h3>
             <div class="grid-2">
@@ -222,6 +238,22 @@
                     </div>
                     <div class="help-panel" data-help-panel="help_graphModel" hidden></div>
                 </div>
+                <div class="input-group">
+                    <label for="graphDegree"><span data-i18n="graphDegree">Avg Connections</span><button type="button" class="help-btn" data-help="help_graphDegree" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="graphDegree" value="3" min="1" max="10" step="1">
+                        <span class="unit-suffix" data-i18n="unitLinks">links</span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_graphDegree" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="clusterSize"><span data-i18n="clusterSize">Cluster Size</span><button type="button" class="help-btn" data-help="help_clusterSize" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="clusterSize" value="50" min="4" max="1000" step="1">
+                        <span class="unit-suffix" data-i18n="unitMembers"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_clusterSize" hidden></div>
+                </div>
             </div>
             <div class="note" data-i18n="populationNote">Newcomers receive a welcome transfer from their richest neighbor and count as guests (separate ARIGATO quota) on the day of their first actual transfer — normally the join day. Leavers keep their balance, which decays away as a dormant wallet.</div>
         </details>
@@ -231,6 +263,23 @@
             <div class="help-panel" data-help-panel="helpPersonas" hidden></div>
             <div class="persona-cards" id="personaCards"></div>
             <button type="button" class="add-btn add-persona" id="addPersona">＋</button>
+            <h3 class="param-subhead"><span data-i18n="behaviorSettings">Shared Behavior</span><button type="button" class="help-btn" data-help="helpBehavior" aria-label="Help">?</button></h3>
+            <div class="help-panel" data-help-panel="helpBehavior" hidden></div>
+            <div class="grid-2">
+                <div class="input-group">
+                    <label for="decayBoostCap"><span data-i18n="decayBoostCap">Decay Boost Cap</span><button type="button" class="help-btn" data-help="help_decayBoostCap" aria-label="Help">?</button></label>
+                    <div class="unit-group">
+                        <input type="number" id="decayBoostCap" value="5" min="1" max="20" step="0.5">
+                        <span class="unit-suffix" data-i18n="unitTimes"></span>
+                    </div>
+                    <div class="help-panel" data-help-panel="help_decayBoostCap" hidden></div>
+                </div>
+                <div class="input-group">
+                    <label for="eveSpikeGain"><span data-i18n="eveSpikeGain">Eve Spike Gain</span><button type="button" class="help-btn" data-help="help_eveSpikeGain" aria-label="Help">?</button></label>
+                    <input type="number" id="eveSpikeGain" value="10" min="0" max="100" step="1">
+                    <div class="help-panel" data-help-panel="help_eveSpikeGain" hidden></div>
+                </div>
+            </div>
         </details>
 
 
